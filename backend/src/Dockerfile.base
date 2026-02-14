@@ -1,0 +1,10 @@
+FROM oven/bun:1-alpine
+
+RUN apk add --no-cache bash git
+
+WORKDIR /app/my-nextjs-app
+
+EXPOSE 3000
+
+# 内联启动脚本：检查并安装依赖，然后启动 dev server
+ENTRYPOINT ["/bin/bash", "-c", "if [ ! -d node_modules ]; then echo 'Installing dependencies...' && bun install; fi && echo 'Starting Next.js dev server...' && exec bun dev"]
