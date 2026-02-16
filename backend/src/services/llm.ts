@@ -125,7 +125,13 @@ export async function sendMessage(
 
   session.messages.push(userMsg);
 
-  const fileContentTree = await fileService.getFileContentTree(containerId);
+  let fileContentTree: Awaited<ReturnType<typeof fileService.getFileContentTree>>;
+  try {
+    fileContentTree = await fileService.getFileContentTree(containerId);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to read project files";
+    throw new Error(`项目文件读取失败: ${msg}。请确认项目存在且路径正确。`);
+  }
 
   const codeContext = JSON.stringify(fileContentTree, null, 2);
 
@@ -201,7 +207,13 @@ export async function* sendMessageStream(
   session.messages.push(userMsg);
   yield { type: "user", data: userMsg };
 
-  const fileContentTree = await fileService.getFileContentTree(containerId);
+  let fileContentTree: Awaited<ReturnType<typeof fileService.getFileContentTree>>;
+  try {
+    fileContentTree = await fileService.getFileContentTree(containerId);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to read project files";
+    throw new Error(`项目文件读取失败: ${msg}。请确认项目存在且路径正确。`);
+  }
 
   const codeContext = JSON.stringify(fileContentTree, null, 2);
 
@@ -224,7 +236,9 @@ ${codeContext}`;
   const assistantId = `assistant-${Date.now()}`;
   let assistantContent = "";
 
+  console.log("[LLM] provider =", config.aiSdk.provider);
   if (config.aiSdk.provider === "cursor") {
+    console.log("[LLM] Calling Cursor CLI...");
     const cursorMessages = openaiMessages.map((m) => ({
       role: m.role as "user" | "assistant" | "system",
       content: Array.isArray(m.content) ? m.content.map((c: any) => (c.text ?? c)).join("\n") : (m.content as string),
@@ -240,6 +254,7 @@ ${codeContext}`;
       },
     };
   } else if (openai) {
+    console.log("[LLM] Using OpenAI/OpenRouter API");
     const stream = await openai.chat.completions.create({
       model: config.aiSdk.model,
       messages: openaiMessages,

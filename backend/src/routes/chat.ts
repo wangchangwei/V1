@@ -28,8 +28,19 @@ router.post("/:containerId/messages", async (req, res) => {
         attachments
       );
 
-      for await (const chunk of messageStream) {
-        res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+      const keepalive = setInterval(() => {
+        try {
+          res.write(": keepalive\n\n");
+        } catch (_) {}
+      }, 15000);
+      (res as any).__keepalive = keepalive;
+
+      try {
+        for await (const chunk of messageStream) {
+          res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+        }
+      } finally {
+        clearInterval(keepalive);
       }
 
       res.write("data: [DONE]\n\n");
@@ -48,13 +59,16 @@ router.post("/:containerId/messages", async (req, res) => {
       });
     }
   } catch (error) {
-    console.log(error);
+    const err = error instanceof Error ? error : new Error(String(error));
+    console.error("[Chat error] message:", err.message);
+    console.error("[Chat error] stack:", err.stack);
     if (stream) {
+      if ((res as any).__keepalive) clearInterval((res as any).__keepalive);
       res.write(
         `data: ${JSON.stringify({
           type: "error",
           data: {
-            error: error instanceof Error ? error.message : "Unknown error",
+            error: err.message,
           },
         })}\n\n`
       );
@@ -62,7 +76,7 @@ router.post("/:containerId/messages", async (req, res) => {
     } else {
       res.status(500).json({
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: err.message,
       });
     }
   }

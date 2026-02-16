@@ -282,6 +282,10 @@ export const WorkspaceDashboard = ({
           toast.error(
             "Files too large. Please reduce file sizes and try again."
           );
+        } else if (error.includes("502")) {
+          toast.error(
+            "请求超时或网关错误(502)。Cursor CLI 响应较慢时可能触发，请稍候再试；若通过端口转发访问，建议直接打开 localhost。"
+          );
         } else {
           toast.error("Connection error. Please try again.");
         }

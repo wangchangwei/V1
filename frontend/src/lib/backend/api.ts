@@ -82,7 +82,7 @@ export interface ChatHistoryResponse {
   sessionId: string;
 }
 
-const FETCH_TIMEOUT_MS = 10000;
+const FETCH_TIMEOUT_MS = 30000;
 
 async function fetchApi<T>(
   endpoint: string,
@@ -109,7 +109,7 @@ async function fetchApi<T>(
   } catch (err) {
     if (err instanceof Error) {
       if (err.name === "AbortError") {
-        throw new Error(`请求超时，请检查后端是否已启动 (${API_BASE_URL})`);
+        throw new Error(`请求超时(${FETCH_TIMEOUT_MS / 1000}秒)，请确认后端已启动且可访问: ${API_BASE_URL}（若通过端口转发访问请改用浏览器直接打开 localhost）`);
       }
       if (/fetch|network|Failed to fetch/i.test(err.message)) {
         throw new Error(
@@ -242,6 +242,11 @@ export function sendChatMessageStream(
               if (data) {
                 try {
                   const parsed = JSON.parse(data);
+                  if (parsed.type === "error") {
+                    onError?.(parsed.data?.error || "Unknown error");
+                    onComplete?.();
+                    return;
+                  }
                   onMessage(parsed);
                 } catch (e) {
                   console.error("Failed to parse SSE data:", data, e);

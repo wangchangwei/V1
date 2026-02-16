@@ -1,4 +1,5 @@
 import express from "express";
+import { config } from "../config";
 import chatRoutes from "./routes/chat";
 import containerRoutes from "./routes/containers";
 
@@ -32,6 +33,7 @@ app.use("/chat", chatRoutes);
 const PORT = process.env.PORT || 4001;
 const server = app.listen(PORT, () => {
   console.log(`December API running on port ${PORT}`);
+  console.log(`AI provider: ${config.aiSdk.provider}`);
 });
 
 server.keepAliveTimeout = 0;
