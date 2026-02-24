@@ -1,4 +1,4 @@
-export const API_BASE_URL = "http://localhost:4001";
+export const API_BASE_URL = "http://localhost:4002";
 
 export interface Container {
   id: string;
@@ -82,7 +82,7 @@ export interface ChatHistoryResponse {
   sessionId: string;
 }
 
-const FETCH_TIMEOUT_MS = 30000;
+const FETCH_TIMEOUT_MS = 120000;
 
 async function fetchApi<T>(
   endpoint: string,
@@ -149,6 +149,31 @@ export async function createContainer(): Promise<CreateContainerResponse> {
     { success: boolean } & CreateContainerResponse
   >("/containers/create", { method: "POST" });
   return response;
+}
+
+export async function importFromGitHub(githubUrl: string, branch?: string): Promise<CreateContainerResponse> {
+  const response = await fetchApi<{ success: boolean } & CreateContainerResponse>(
+    "/containers/import/github",
+    {
+      method: "POST",
+      body: JSON.stringify({ githubUrl, branch: branch || undefined }),
+    }
+  );
+  return response;
+}
+
+export async function importFromZip(file: File): Promise<CreateContainerResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${API_BASE_URL}/containers/import/zip`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || "Import failed");
+  }
+  return res.json();
 }
 
 export async function startContainer(

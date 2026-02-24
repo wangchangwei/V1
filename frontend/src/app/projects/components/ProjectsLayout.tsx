@@ -16,6 +16,7 @@ export const ProjectsLayout = ({ children }: ProjectsLayoutProps) => {
         loop
         muted
         playsInline
+        suppressHydrationWarning
         className="absolute top-0 left-0 w-full h-screen object-cover opacity-40"
       >
         <source src="/bg.mp4" type="video/mp4" />
@@ -33,7 +34,7 @@ export const ProjectsLayout = ({ children }: ProjectsLayoutProps) => {
                   className="text-lg bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent hover:opacity-80 transition-opacity cursor-pointer"
                   style={{ fontFamily: "XSpace, monospace" }}
                 >
-                  DECEMBER
+                  changwei
                 </Link>
               </div>
 
@@ -55,7 +56,7 @@ export const ProjectsLayout = ({ children }: ProjectsLayoutProps) => {
         <footer className="mt-20 pt-12 border-t border-gray-800/50 max-w-4xl mx-auto px-6">
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-500">
-              © 2025 December. Build the future, one container at a time.
+              © 2025 changwei. Build the future, one container at a time.
             </div>
             <div className="flex items-center gap-6 text-sm text-gray-400">
               <a href="#" className="hover:text-white transition-colors">

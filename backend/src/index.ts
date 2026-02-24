@@ -2,8 +2,15 @@ import express from "express";
 import { config } from "../config";
 import chatRoutes from "./routes/chat";
 import containerRoutes from "./routes/containers";
+import { recoverRunningProjects } from "./services/project";
 
 const app = express();
+
+// /health 放在最前，不经过 body 解析，确保可快速返回
+app.get("/health", (_req, res) => {
+  res.setHeader("Content-Type", "application/json");
+  res.status(200).end(JSON.stringify({ ok: true }));
+});
 
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
@@ -23,24 +30,47 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-app.get("/health", (_req, res) => {
-  res.json({ ok: true });
-});
-
 app.use("/containers", containerRoutes);
 app.use("/chat", chatRoutes);
 
-const PORT = process.env.PORT || 4001;
-const server = app.listen(PORT, () => {
-  console.log(`December API running on port ${PORT}`);
-  console.log(`AI provider: ${config.aiSdk.provider}`);
-});
+const PORT = Number(process.env.PORT || 4002);
 
-server.keepAliveTimeout = 0;
-server.headersTimeout = 0;
+function startServer() {
+  const server = app.listen(PORT);
 
-// 防止在部分环境下进程被提前退出
-const keepAlive = setInterval(() => {}, 2 ** 31 - 1);
-server.on("close", () => clearInterval(keepAlive));
+  server.keepAliveTimeout = 5000;
+  server.headersTimeout = 6000;
+
+  server.on("listening", () => {
+    console.log(`December API running on port ${PORT}`);
+    console.log(`AI provider: ${config.aiSdk.provider}`);
+    recoverRunningProjects().catch((e) =>
+      console.error("[recover] Failed to recover running projects:", e)
+    );
+  });
+
+  function shutdown() {
+    // 强制销毁所有已有连接，确保端口立即释放
+    server.closeAllConnections?.();
+    server.close(() => process.exit(0));
+    // 兜底：3 秒后强制退出
+    setTimeout(() => process.exit(0), 3000).unref();
+  }
+
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+
+  server.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      console.warn(`Port ${PORT} in use, retrying in 2s...`);
+      server.close();
+      setTimeout(startServer, 2000);
+    } else {
+      throw err;
+    }
+  });
+}
+
+startServer();
 
 export default app;

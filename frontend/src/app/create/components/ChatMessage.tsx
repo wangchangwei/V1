@@ -16,6 +16,7 @@ import {
   Trash2,
 } from "lucide-react";
 import React, { useEffect, useState } from "react";
+import { toast } from "react-hot-toast";
 import { API_BASE_URL } from "@/lib/backend/api";
 
 interface Attachment {
@@ -183,6 +184,8 @@ const parseSpecialTags = (
       }
     } catch (error) {
       console.error(`[FILE OP] ${type} operation failed:`, error);
+      const msg = error instanceof Error ? error.message : String(error);
+      toast.error(`文件应用失败: ${msg.slice(0, 80)}${msg.length > 80 ? "…" : ""}`);
     }
   };
 
@@ -660,9 +663,22 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                   )}
                 </>
               ) : (
-                <div className="prose prose-sm prose-invert max-w-none [&_h2]:text-white [&_h3]:text-white [&_h4]:text-white [&_strong]:text-white [&_code]:bg-gray-600/60 [&_code]:text-gray-200 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:border [&_code]:border-gray-500/30">
-                  {formatMessageContent(message.content)}
-                </div>
+                <>
+                  <div className="prose prose-sm prose-invert max-w-none [&_h2]:text-white [&_h3]:text-white [&_h4]:text-white [&_strong]:text-white [&_code]:bg-gray-600/60 [&_code]:text-gray-200 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:border [&_code]:border-gray-500/30">
+                    {formatMessageContent(message.content)}
+                  </div>
+                  {/已经修改|修改成功|updated|I've updated|I've changed|done|成功修改|修改完成/i.test(
+                    message.content
+                  ) && (
+                    <div className="mt-2 rounded-lg bg-amber-500/15 border border-amber-500/40 px-3 py-2 text-xs text-amber-200">
+                      未检测到可自动应用的代码修改；页面不会变化。若需自动改文件，请要求助手用
+                      <code className="mx-1 bg-amber-500/20 px-1 rounded">
+                        {"<dec-write file_path=\"...\">"}
+                      </code>
+                      写出完整文件内容并重新发送。
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

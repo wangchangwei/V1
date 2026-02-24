@@ -81,6 +81,24 @@ async function ensureProjectsDir(): Promise<void> {
   await fs.mkdir(PROJECTS_DIR, { recursive: true });
 }
 
+async function isPortListening(port: number): Promise<boolean> {
+  return !(await isPortAvailable(port));
+}
+
+// 后端重启后，检测哪些项目的端口仍在监听，将其重新标记为 running
+export async function recoverRunningProjects(): Promise<void> {
+  const store = await loadProjectsStore();
+  for (const [projectId, meta] of Object.entries(store)) {
+    if (runningProcesses.has(projectId)) continue;
+    if (await isPortListening(meta.port)) {
+      usedPorts.add(meta.port);
+      // 进程已 detached，无法拿到句柄；用 null 占位，只需标记 running
+      runningProcesses.set(projectId, { process: null as any, port: meta.port });
+      console.log(`[recover] Project ${projectId} already running on port ${meta.port}`);
+    }
+  }
+}
+
 async function initializeProjectOnHost(projectId: string): Promise<string> {
   await ensureProjectsDir();
   const projectDir = path.join(PROJECTS_DIR, projectId);
@@ -144,14 +162,14 @@ function runBunInstall(projectDir: string): Promise<void> {
 }
 
 function runBunDev(projectDir: string, port: number): ReturnType<typeof spawn> {
-  const child = spawn("bun", ["dev"], {
+  const child = spawn("bun", ["run", "dev"], {
     cwd: projectDir,
     env: { ...process.env, PORT: String(port) },
     stdio: "ignore",
-    detached: true,
-    shell: process.platform === "win32",
+    detached: false,
+    shell: false,
+    windowsHide: true,
   });
-  child.unref();
   return child;
 }
 
@@ -189,6 +207,45 @@ export async function listProjects(): Promise<any[]> {
     (a, b) =>
       new Date(b.created).getTime() - new Date(a.created).getTime()
   );
+}
+
+// 把已经初始化好的 projectDir（由 import 服务创建）注册进来并启动
+export async function registerAndStartProject(projectId: string): Promise<{
+  port: number;
+  containerLike: { id: string; containerId: string; status: string; port: number; url: string; createdAt: string; type: string };
+}> {
+  const assignedPort = await findAvailablePort();
+  const projectDir = path.join(PROJECTS_DIR, projectId);
+
+  const store = await loadProjectsStore();
+  store[projectId] = { port: assignedPort, createdAt: new Date().toISOString() };
+  await saveProjectsStore(store);
+
+  const child = runBunDev(projectDir, assignedPort);
+  runningProcesses.set(projectId, { process: child, port: assignedPort });
+
+  child.on("exit", (code) => {
+    runningProcesses.delete(projectId);
+    releasePort(assignedPort);
+    if (code !== null && code !== 0) {
+      console.log(`Project ${projectId} process exited with code ${code}`);
+    }
+  });
+
+  console.log(`[import] Project ${projectId} running on port ${assignedPort}`);
+
+  return {
+    port: assignedPort,
+    containerLike: {
+      id: projectId,
+      containerId: projectId,
+      status: "running",
+      port: assignedPort,
+      url: `http://localhost:${assignedPort}`,
+      createdAt: store[projectId].createdAt,
+      type: "Next.js App",
+    },
+  };
 }
 
 export async function createProject(): Promise<{
@@ -256,7 +313,11 @@ export async function startProject(projectId: string): Promise<{ port: number }>
 
   const port = meta.port;
   if (!(await isPortAvailable(port))) {
-    throw new Error(`Port ${port} is in use. Please stop the other process or delete this project.`);
+    // 端口已被占用，说明 bun dev 进程在后端重启前已在运行，直接重新注册
+    usedPorts.add(port);
+    runningProcesses.set(projectId, { process: null as any, port });
+    console.log(`Project ${projectId} re-registered on existing port ${port}`);
+    return { port };
   }
   usedPorts.add(port);
 
@@ -281,7 +342,7 @@ export async function stopProject(projectId: string): Promise<void> {
     throw new Error(`Project not running: ${projectId}`);
   }
 
-  running.process.kill("SIGTERM");
+  try { running.process?.kill("SIGTERM"); } catch (_) {}
   releasePort(running.port);
   runningProcesses.delete(projectId);
   console.log(`Stopped project ${projectId}, released port ${running.port}`);
@@ -290,7 +351,7 @@ export async function stopProject(projectId: string): Promise<void> {
 export async function deleteProject(projectId: string): Promise<void> {
   const running = runningProcesses.get(projectId);
   if (running) {
-    running.process.kill("SIGTERM");
+    try { running.process?.kill("SIGTERM"); } catch (_) {}
     releasePort(running.port);
     runningProcesses.delete(projectId);
   }

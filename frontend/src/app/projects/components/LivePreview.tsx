@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Container, getContainers } from "../../../lib/backend/api";
+import { Container, getContainers, startContainer } from "../../../lib/backend/api";
 
 interface LivePreviewProps {
   containerId: string;
@@ -15,6 +15,8 @@ export const LivePreview = ({
   const [container, setContainer] = useState<Container | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchContainer = async () => {
@@ -42,6 +44,18 @@ export const LivePreview = ({
     const interval = setInterval(fetchContainer, 5000);
     return () => clearInterval(interval);
   }, [containerId]);
+
+  const handleStart = async () => {
+    setIsStarting(true);
+    setStartError(null);
+    try {
+      await startContainer(containerId);
+    } catch (err) {
+      setStartError(err instanceof Error ? err.message : "Failed to start container");
+    } finally {
+      setIsStarting(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -104,9 +118,31 @@ export const LivePreview = ({
           <p className="text-white/60 mb-6">
             Start the container to see the live preview
           </p>
-          <div className="text-sm text-white/40 bg-gray-700/40 backdrop-blur-sm px-3 py-2 rounded-lg border border-gray-600/40">
+          <div className="text-sm text-white/40 bg-gray-700/40 backdrop-blur-sm px-3 py-2 rounded-lg border border-gray-600/40 mb-6">
             Status: <span className="font-mono">{container.status}</span>
           </div>
+          <button
+            onClick={handleStart}
+            disabled={isStarting}
+            className="flex items-center gap-2 mx-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors shadow-md"
+          >
+            {isStarting ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                Starting...
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                </svg>
+                Start
+              </>
+            )}
+          </button>
+          {startError && (
+            <p className="mt-3 text-red-400 text-xs">{startError}</p>
+          )}
         </div>
       </div>
     );

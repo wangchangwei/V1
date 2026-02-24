@@ -1,8 +1,23 @@
+import path from "path";
+import fs from "fs/promises";
 import OpenAI from "openai";
 import { config } from "../../config";
 import prompt from "../utils/prompt.txt";
-import * as fileService from "./file";
+import * as projectService from "./project";
 import { callCursorCli } from "./cursorCli";
+
+async function getProjectStructureHint(workspaceDir: string): Promise<string> {
+  try {
+    const hasSrc = await fs.stat(path.join(workspaceDir, "src")).then(s => s.isDirectory()).catch(() => false);
+    const appDir = hasSrc ? "src/app" : "app";
+    const tsconfig = await fs.readFile(path.join(workspaceDir, "tsconfig.json"), "utf-8").catch(() => "");
+    const aliasMatch = tsconfig.match(/"@\/\*"\s*:\s*\["([^"]+)"/);
+    const alias = aliasMatch ? aliasMatch[1].replace("/*", "") : (hasSrc ? "./src/*" : "./*");
+    return `\n\n<project-structure>\nThis project does NOT use a src/ directory. All source files are in the root:\n- App Router pages: ${appDir}/\n- Components: components/\n- TypeScript alias @/* maps to: ${alias}\nDo NOT create or write files under src/. Always write directly to ${appDir}/ and other root-level directories.\n</project-structure>`;
+  } catch {
+    return "";
+  }
+}
 
 const openai =
   config.aiSdk.provider === "openai"
@@ -125,20 +140,7 @@ export async function sendMessage(
 
   session.messages.push(userMsg);
 
-  let fileContentTree: Awaited<ReturnType<typeof fileService.getFileContentTree>>;
-  try {
-    fileContentTree = await fileService.getFileContentTree(containerId);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Failed to read project files";
-    throw new Error(`项目文件读取失败: ${msg}。请确认项目存在且路径正确。`);
-  }
-
-  const codeContext = JSON.stringify(fileContentTree, null, 2);
-
-  const systemPrompt = `${prompt}
-
-Current codebase structure and content:
-${codeContext}`;
+  const systemPrompt = `${prompt}`;
 
   const openaiMessages = [
     { role: "system" as const, content: systemPrompt },
@@ -158,7 +160,16 @@ ${codeContext}`;
       role: m.role as "user" | "assistant" | "system",
       content: Array.isArray(m.content) ? m.content.map((c: any) => (c.text ?? c)).join("\n") : (m.content as string),
     }));
-    assistantContent = await callCursorCli(systemPrompt, cursorMessages);
+    let workspaceDir: string | undefined;
+    let enrichedPrompt = systemPrompt;
+    try {
+      const project = await projectService.getProjectByIdOrUuid(containerId);
+      workspaceDir = path.join(projectService.PROJECTS_DIR, project.id);
+      enrichedPrompt = systemPrompt + await getProjectStructureHint(workspaceDir);
+    } catch (_) {
+      // 项目不存在时不传 workspace，沿用 CLI 默认行为
+    }
+    assistantContent = await callCursorCli(enrichedPrompt, cursorMessages, workspaceDir);
   } else if (openai) {
     const completion = await openai.chat.completions.create({
       model: config.aiSdk.model,
@@ -207,20 +218,7 @@ export async function* sendMessageStream(
   session.messages.push(userMsg);
   yield { type: "user", data: userMsg };
 
-  let fileContentTree: Awaited<ReturnType<typeof fileService.getFileContentTree>>;
-  try {
-    fileContentTree = await fileService.getFileContentTree(containerId);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Failed to read project files";
-    throw new Error(`项目文件读取失败: ${msg}。请确认项目存在且路径正确。`);
-  }
-
-  const codeContext = JSON.stringify(fileContentTree, null, 2);
-
-  const systemPrompt = `${prompt}
-
-Current codebase structure and content:
-${codeContext}`;
+  const systemPrompt = `${prompt}`;
 
   const openaiMessages = [
     { role: "system" as const, content: systemPrompt },
@@ -243,7 +241,17 @@ ${codeContext}`;
       role: m.role as "user" | "assistant" | "system",
       content: Array.isArray(m.content) ? m.content.map((c: any) => (c.text ?? c)).join("\n") : (m.content as string),
     }));
-    assistantContent = await callCursorCli(systemPrompt, cursorMessages);
+    let workspaceDir: string | undefined;
+    let enrichedPrompt = systemPrompt;
+    try {
+      const project = await projectService.getProjectByIdOrUuid(containerId);
+      workspaceDir = path.join(projectService.PROJECTS_DIR, project.id);
+      console.log("[LLM] Cursor workspace:", workspaceDir);
+      enrichedPrompt = systemPrompt + await getProjectStructureHint(workspaceDir);
+    } catch (_) {
+      // 项目不存在时不传 workspace
+    }
+    assistantContent = await callCursorCli(enrichedPrompt, cursorMessages, workspaceDir);
     yield {
       type: "assistant",
       data: {

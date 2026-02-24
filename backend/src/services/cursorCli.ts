@@ -3,13 +3,6 @@ import { config } from "../../config";
 
 export type CursorMessage = { role: "user" | "assistant" | "system"; content: string };
 
-/**
- * 按飞书 cursor-bot 方式调用 Cursor CLI（与 cursor-bot 一致）：
- * - 命令: agent（依赖 PATH，或 config 中的路径）
- * - 参数: -p --force --output-format stream-json --stream-partial-output --approve-mcps
- * - 提示词通过 stdin 传入（非命令行参数）
- * - 从 stdout 解析 JSON 行，取 type=result 或 type=assistant 的内容
- */
 function buildPrompt(systemPrompt: string, messages: CursorMessage[]): string {
   const lines = [
     "[System]",
@@ -23,92 +16,125 @@ function buildPrompt(systemPrompt: string, messages: CursorMessage[]): string {
   return lines.join("\n");
 }
 
+function parseStreamJson(output: string): string {
+  let accumulatedText = "";
+  let result = "";
+
+  const lines = output.split("\n").filter((l) => l.trim());
+  for (const line of lines) {
+    try {
+      const json = JSON.parse(line);
+      if (json.type === "result" && json.result) {
+        result = json.result;
+      }
+      if (json.type === "assistant" && json.message?.content?.[0]?.text) {
+        const chunk = json.message.content[0].text;
+        if (json.timestamp_ms) {
+          accumulatedText += chunk;
+        } else {
+          accumulatedText = chunk;
+        }
+      }
+    } catch (_) {}
+  }
+
+  return result || accumulatedText;
+}
+
 export async function callCursorCli(
   systemPrompt: string,
   messages: CursorMessage[],
   workspaceDir?: string
 ): Promise<string> {
-  const fullPrompt = buildPrompt(systemPrompt, messages);
-  const cliPath = config.aiSdk.cursorCliPath ?? "agent";
-  const baseArgs = config.aiSdk.cursorArgs ?? [];
+  const cliPath = config.aiSdk.cursorCliPath;
+  const baseArgs = (config.aiSdk as any).cursorArgs ?? [];
 
+  if (!cliPath || typeof cliPath !== "string") {
+    throw new Error(
+      "Cursor 供应商未配置：请在 backend/config.ts 的 aiSdk 中设置 cursorCliPath（指向 Cursor Agent CLI 可执行路径，如 agent.cmd）。"
+    );
+  }
+
+  const fullPrompt = buildPrompt(systemPrompt, messages);
+
+  // 与 cursor-bot 保持一致：prompt 通过 stdin 传入，不作为命令行参数
   const args = [
     ...baseArgs,
     "-p",
     "--force",
-    "--output-format",
-    "stream-json",
+    "--output-format", "stream-json",
     "--stream-partial-output",
     "--approve-mcps",
-    ...(workspaceDir ? ["--workspace", workspaceDir] : []),
+    "--trust",
   ];
 
-  const cleanEnv = { ...process.env };
-  delete (cleanEnv as any).CURSOR_CLI;
-  delete (cleanEnv as any).CURSOR_AGENT;
+  const cursorApiKey =
+    (config.aiSdk as any).cursorApiKey ?? process.env.CURSOR_API_KEY ?? "";
+  const childEnv = { ...process.env } as Record<string, string>;
+  if (cursorApiKey) childEnv.CURSOR_API_KEY = cursorApiKey;
 
+  // 绕过本地代理，避免 127.0.0.1:7890 拦截 Cursor CLI 的网络请求
+  childEnv.HTTP_PROXY = "";
+  childEnv.HTTPS_PROXY = "";
+  childEnv.http_proxy = "";
+  childEnv.https_proxy = "";
+  childEnv.NO_PROXY = "*";
+  childEnv.no_proxy = "*";
+
+  const cwd = workspaceDir || process.cwd();
   const shellOption =
-    process.platform === "win32" ? process.env.ComSpec || "cmd.exe" : true;
+    process.platform === "win32"
+      ? process.env.ComSpec || "cmd.exe"
+      : true;
 
   return new Promise((resolve, reject) => {
     const child = spawn(cliPath, args, {
-      cwd: process.cwd(),
-      env: cleanEnv,
-      shell: shellOption,
+      cwd,
+      env: childEnv,
+      shell: shellOption as any,
       stdio: ["pipe", "pipe", "pipe"],
     });
 
-    let result = "";
-    let accumulatedText = "";
+    let stdout = "";
+    let stderr = "";
 
     child.stdout.setEncoding("utf-8");
-    child.stdout.on("data", (data: string) => {
-      const lines = data.split("\n").filter((line) => line.trim());
-      for (const line of lines) {
-        try {
-          const json = JSON.parse(line);
-          if (json.type === "result" && json.result) {
-            result = json.result;
-          }
-          if (json.type === "assistant" && json.message?.content?.[0]?.text) {
-            const chunkText = json.message.content[0].text;
-            if (json.timestamp_ms) {
-              accumulatedText += chunkText;
-            } else {
-              accumulatedText = chunkText;
-            }
-          }
-        } catch (_) {
-          // 忽略非 JSON 行
-        }
-      }
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
     });
 
     child.stderr.setEncoding("utf-8");
     child.stderr.on("data", (chunk: string) => {
-      console.log("[Cursor CLI stderr]", chunk.slice(0, 300));
+      stderr += chunk;
     });
 
     child.on("error", (err) => {
       reject(new Error(`Cursor CLI spawn error: ${err.message}`));
     });
 
-    child.on("close", (code) => {
-      const finalResult = result || accumulatedText.trim();
-      if (finalResult) {
-        resolve(finalResult);
-      } else if (code === 0) {
-        resolve("任务完成");
-      } else {
+    child.on("close", (code, signal) => {
+      if (code !== 0 && code !== null && stdout.trim() === "") {
         reject(
           new Error(
-            `Cursor CLI exited with code ${code}. 请确认已安装 Cursor 且 agent 在 PATH 中（或配置 cursorCliPath）。`
+            `Cursor CLI exited ${code}${signal ? ` (${signal})` : ""}. stderr: ${stderr.slice(0, 500)}`
           )
         );
+        return;
       }
+
+      const parsed = parseStreamJson(stdout);
+      resolve(parsed || stdout.trim() || "No response from Cursor CLI.");
     });
 
-    child.stdin.write(fullPrompt, "utf-8");
-    child.stdin.end();
+    // cursor-bot 的做法：把 prompt 写入 stdin，然后关闭
+    child.stdin.on("error", () => {
+      // stdin 管道关闭时忽略写入错误，避免崩溃整个进程
+    });
+    try {
+      child.stdin.write(fullPrompt);
+      child.stdin.end();
+    } catch (_) {
+      // 忽略同步写入错误（Bun Windows 上 EOF 问题）
+    }
   });
 }
