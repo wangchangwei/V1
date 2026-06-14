@@ -52,12 +52,21 @@ export const WorkspaceDashboard = ({
   );
   const [selectedModel, setSelectedModel] = useState<string | undefined>(undefined);
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
-  const [sidebarWidth, setSidebarWidth] = useState<number>(320);
+  const [sidebarWidth, setSidebarWidth] = useState<number>(384);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const modelFromUrl = urlParams.get("model");
     if (modelFromUrl) setSelectedModel(modelFromUrl);
+  }, []);
+
+  // Keep the assistant sidebar at 1/3 of the viewport width.
+  useEffect(() => {
+    const sync = () =>
+      setSidebarWidth(Math.round(window.innerWidth / 3));
+    sync();
+    window.addEventListener("resize", sync);
+    return () => window.removeEventListener("resize", sync);
   }, []);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -265,6 +274,8 @@ export const WorkspaceDashboard = ({
       (data) => {
         if (data.type === "user") {
           setMessages((prev) => [...prev, data.data]);
+        } else if (data.type === "tool_call" || data.type === "tool_result") {
+          // No-op: tool calls are shown in the final assistant message
         } else if (data.type === "assistant") {
           setStreamingMessageId(data.data.id);
           setMessages((prev) => {
@@ -389,7 +400,8 @@ export const WorkspaceDashboard = ({
 
     const onMouseMove = (moveEvent: MouseEvent) => {
       const delta = moveEvent.clientX - startX;
-      const newWidth = Math.min(Math.max(startWidth + delta, 240), 600);
+      const max = Math.max(600, Math.round(window.innerWidth * 0.6));
+      const newWidth = Math.min(Math.max(startWidth + delta, 240), max);
       setSidebarWidth(newWidth);
     };
 
