@@ -19,6 +19,7 @@ export const ProjectPromptInterface = ({
   const [isCreatingFromPrompt, setIsCreatingFromPrompt] = useState(false);
   const [showCommunityDropdown, setShowCommunityDropdown] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [modelOptions, setModelOptions] = useState<Model[]>([]);
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
   const router = useRouter();
@@ -79,6 +80,35 @@ export const ProjectPromptInterface = ({
     "Django",
   ];
 
+  const SUGGESTIONS: Record<string, string[]> = {
+    "Next.js": [
+      "A SaaS landing page for an AI note-taking app, dark theme, with pricing and FAQ",
+      "A personal portfolio with a hero, three project cards, and a contact form",
+      "A blog homepage with a featured post grid and a sidebar with categories",
+      "A todo app with local storage, dark mode toggle, and keyboard shortcuts",
+    ],
+    "Express & React": [
+      "A REST API for a bookstore with full CRUD on books and authors",
+      "A real-time chat app with WebSocket, user list, and message history",
+      "A kanban board with drag-and-drop cards and per-user authentication",
+      "A URL shortener with analytics, QR codes, and signed-in user history",
+    ],
+    "Express & Vue": [
+      "A movie browser with search, filters, and a favorites list",
+      "A recipe app with categories, ingredient lists, and a meal planner",
+      "An expense tracker dashboard with monthly charts and category breakdowns",
+      "A book review site with star ratings, tags, and a reading list",
+    ],
+    Django: [
+      "A blog with categories, comments, and Markdown posts",
+      "A todo app with user accounts, due dates, and email reminders",
+      "A polls site with multiple-choice questions and live results",
+      "An event calendar with RSVPs, ICS export, and timezone support",
+    ],
+  };
+
+  const currentSuggestions = SUGGESTIONS[selectedTemplate] ?? SUGGESTIONS["Next.js"];
+
 
   const handleCommunitySelect = (option: string) => {
     onTemplateChange(option);
@@ -98,11 +128,26 @@ export const ProjectPromptInterface = ({
   };
 
   const handleSparkleClick = () => {
-    toast("AI suggestions are coming soon!", {
-      icon: "✨",
-      duration: 2000,
-    });
+    setShowSuggestions((v) => !v);
+    setShowCommunityDropdown(false);
+    setShowModelDropdown(false);
   };
+
+  const handleSuggestionSelect = (suggestion: string) => {
+    setPromptInput(suggestion);
+    setShowSuggestions(false);
+  };
+
+  // Close popover on Escape (scoped to the new suggestions popover only —
+  // existing template/model dropdowns had no Escape handler either).
+  useEffect(() => {
+    if (!showSuggestions) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowSuggestions(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showSuggestions]);
 
   return (
     <>
@@ -230,13 +275,48 @@ export const ProjectPromptInterface = ({
                   </div>
 
                   <div className="ml-auto flex items-center gap-2">
-                    <button
-                      className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all duration-300 backdrop-blur-sm cursor-pointer"
-                      type="button"
-                      onClick={handleSparkleClick}
-                    >
-                      <Sparkles className="w-4 h-4" />
-                    </button>
+                    <div className="relative">
+                      <button
+                        className={`p-2 rounded-lg transition-all duration-300 backdrop-blur-sm cursor-pointer ${
+                          showSuggestions
+                            ? "text-white bg-white/10"
+                            : "text-gray-400 hover:text-white hover:bg-white/10"
+                        }`}
+                        type="button"
+                        onClick={handleSparkleClick}
+                        aria-label="Show AI suggestions"
+                        aria-expanded={showSuggestions}
+                        aria-haspopup="listbox"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                      </button>
+
+                      {showSuggestions && (
+                        <div
+                          role="listbox"
+                          aria-label="Prompt suggestions"
+                          className="absolute top-full right-0 mt-2 w-[360px] max-h-[280px] overflow-y-auto bg-gray-900/90 backdrop-blur-xl border border-gray-600/30 rounded-lg shadow-xl z-50 bg-gradient-to-br from-white/[0.08] to-white/[0.02]"
+                        >
+                          <div className="px-3 py-2 border-b border-white/10 text-xs text-gray-400">
+                            Suggestions for{" "}
+                            <span className="text-gray-200">
+                              {selectedTemplate}
+                            </span>
+                          </div>
+                          {currentSuggestions.map((suggestion) => (
+                            <button
+                              key={suggestion}
+                              role="option"
+                              aria-selected="false"
+                              onClick={() => handleSuggestionSelect(suggestion)}
+                              className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/10 first:rounded-t-none last:rounded-b-lg transition-all duration-200 cursor-pointer leading-snug"
+                            >
+                              {suggestion}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <button
                       className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all duration-300 backdrop-blur-sm cursor-pointer"
                       type="button"
@@ -268,12 +348,13 @@ export const ProjectPromptInterface = ({
                   </div>
                 </div>
 
-                {(showCommunityDropdown || showModelDropdown) && (
+                {(showCommunityDropdown || showModelDropdown || showSuggestions) && (
                   <div
                     className="fixed inset-0 z-40"
                     onClick={() => {
                       setShowCommunityDropdown(false);
                       setShowModelDropdown(false);
+                      setShowSuggestions(false);
                     }}
                   />
                 )}
