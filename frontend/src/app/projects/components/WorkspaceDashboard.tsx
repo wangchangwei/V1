@@ -52,7 +52,7 @@ export const WorkspaceDashboard = ({
   );
   const [selectedModel, setSelectedModel] = useState<string | undefined>(undefined);
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
-  const [sidebarWidth, setSidebarWidth] = useState<number>(320);
+  const [sidebarWidth, setSidebarWidth] = useState<number>(384);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
