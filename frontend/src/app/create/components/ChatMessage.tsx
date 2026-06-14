@@ -131,11 +131,49 @@ const ToolCallRow: React.FC<{ toolCall: ToolCall }> = ({ toolCall }) => {
         </span>
       </button>
       {expanded && (
-        <div className="border-t border-white/10 px-3 py-2 bg-black/20">
-          <div className="text-xs text-white/50 mb-1">Result</div>
-          <pre className="text-xs text-white/80 font-mono whitespace-pre-wrap break-words max-h-64 overflow-auto">
-            {toolCall.result || "(empty)"}
-          </pre>
+        <div className="border-t border-white/10 px-3 py-2 bg-black/20 space-y-2">
+          {(() => {
+            const parsed = safeParseArgs(toolCall.args);
+            // write_file: show the file content (the actual code change) above
+            // the result so users can see what was written without digging.
+            if (
+              toolCall.name === "write_file" &&
+              typeof parsed.content === "string"
+            ) {
+              return (
+                <>
+                  <div>
+                    <div className="text-xs text-white/50 mb-1">
+                      Content
+                    </div>
+                    <pre className="text-xs text-white/80 font-mono whitespace-pre-wrap break-words max-h-64 overflow-auto">
+                      {parsed.content}
+                    </pre>
+                  </div>
+                  <div>
+                    <div className="text-xs text-white/50 mb-1">Result</div>
+                    <pre className="text-xs text-white/80 font-mono whitespace-pre-wrap break-words max-h-64 overflow-auto">
+                      {toolCall.result || "(empty)"}
+                    </pre>
+                  </div>
+                </>
+              );
+            }
+            // list_files: result is JSON, render compactly
+            if (toolCall.name === "list_files") {
+              return (
+                <pre className="text-xs text-white/80 font-mono whitespace-pre-wrap break-words max-h-64 overflow-auto">
+                  {toolCall.result || "(empty)"}
+                </pre>
+              );
+            }
+            // default: just show the result
+            return (
+              <pre className="text-xs text-white/80 font-mono whitespace-pre-wrap break-words max-h-64 overflow-auto">
+                {toolCall.result || "(empty)"}
+              </pre>
+            );
+          })()}
         </div>
       )}
     </div>
