@@ -2,7 +2,11 @@
 
 > An open-source, self-hosted alternative to [v0.dev](https://v0.app) — describe the web app you want in natural language, watch it come to life in a live preview, and iterate through chat.
 
-![V1 banner](frontend/public/v1-logo.png)
+## Screenshots
+
+| Home — project list & prompt | Workspace — AI chat + live preview |
+|-------------------------------|-------------------------------------|
+| ![V1 home](.assets/home.png)  | ![V1 editor](.assets/editor.png)    |
 
 ## What is V1?
 
