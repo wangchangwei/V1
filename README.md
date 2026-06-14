@@ -141,12 +141,13 @@ V1/
 │       │   └── export.ts          ZIP exporter
 │       └── utils/prompt.txt       system prompt with design rules
 │
+├── template/                      vendored Next.js project template (scaffold)
 ├── config.ts                      shared AI config (read by backend)
 ├── start.sh                       dev launcher (both servers in parallel)
 └── data/                          runtime state (container metadata, etc.)
 ```
 
-Each project is a clone of the [V1 Next.js template](https://github.com/ntegrals/december-nextjs-template) running in its own Docker container on a unique port (8000+). The backend writes files into the container and proxies requests as needed.
+Each project is instantiated from the vendored `template/` directory (Next.js + shadcn/ui), running in its own Docker container on a unique port (8000+). The backend writes files into the container and proxies requests as needed.
 
 ## How the AI loop works
 
