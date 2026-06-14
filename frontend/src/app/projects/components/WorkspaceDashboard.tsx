@@ -265,6 +265,8 @@ export const WorkspaceDashboard = ({
       (data) => {
         if (data.type === "user") {
           setMessages((prev) => [...prev, data.data]);
+        } else if (data.type === "tool_call" || data.type === "tool_result") {
+          // No-op: tool calls are shown in the final assistant message
         } else if (data.type === "assistant") {
           setStreamingMessageId(data.data.id);
           setMessages((prev) => {

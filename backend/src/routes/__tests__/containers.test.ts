@@ -110,7 +110,7 @@ describe("Containers API", () => {
     expect(startRes.status).toBe(200);
     expect(startRes.body.success).toBe(true);
     expect(startRes.body.status).toBe("running");
-    expect(startRes.body.url).toMatch(/^http:\/\/localhost:\d+$/);
+    expect(startRes.body.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
   });
 
   it("POST /containers/:id/start returns project info with message", async () => {

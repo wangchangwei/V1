@@ -58,6 +58,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # backend runtime data (project list, etc.)
 backend/data/
+/data/
 
 # misc
 .DS_Store
