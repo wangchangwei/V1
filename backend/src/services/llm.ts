@@ -39,8 +39,16 @@ export interface ChatSession {
 
 const chatSessions = new Map<string, ChatSession>();
 
+// AI_BASE_URL may or may not include a version segment (e.g. "/v1").
+// The OpenAI SDK appends "/chat/completions" to baseURL, so the base must
+// end with the path the provider actually serves. Ensure "/v1" is present.
+const sdkBaseURL = (() => {
+  const u = config.aiSdk.baseUrl.replace(/\/+$/, "");
+  return /\/(v\d+)$/.test(u) ? u : `${u}/v1`;
+})();
+
 const client = new OpenAI({
-  baseURL: config.aiSdk.baseUrl,
+  baseURL: sdkBaseURL,
   apiKey: config.aiSdk.apiKey,
 });
 
