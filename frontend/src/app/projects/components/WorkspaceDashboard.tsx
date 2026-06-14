@@ -59,6 +59,15 @@ export const WorkspaceDashboard = ({
     const modelFromUrl = urlParams.get("model");
     if (modelFromUrl) setSelectedModel(modelFromUrl);
   }, []);
+
+  // Keep the assistant sidebar at 1/3 of the viewport width.
+  useEffect(() => {
+    const sync = () =>
+      setSidebarWidth(Math.round(window.innerWidth / 3));
+    sync();
+    window.addEventListener("resize", sync);
+    return () => window.removeEventListener("resize", sync);
+  }, []);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -391,7 +400,8 @@ export const WorkspaceDashboard = ({
 
     const onMouseMove = (moveEvent: MouseEvent) => {
       const delta = moveEvent.clientX - startX;
-      const newWidth = Math.min(Math.max(startWidth + delta, 240), 600);
+      const max = Math.max(600, Math.round(window.innerWidth * 0.6));
+      const newWidth = Math.min(Math.max(startWidth + delta, 240), max);
       setSidebarWidth(newWidth);
     };
 
