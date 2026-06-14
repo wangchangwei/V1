@@ -58,7 +58,7 @@ router.post("/:containerId/start", async (req, res) => {
       success: true,
       containerId,
       port,
-      url: `http://localhost:${port}`,
+      url: `http://127.0.0.1:${port}`,
       status: "running",
       message: "Container started successfully",
     });

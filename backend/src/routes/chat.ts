@@ -1,12 +1,20 @@
 import express from "express";
 import * as llmService from "../services/llm";
+import { isSupportedModel } from "../services/models";
 
 const router = express.Router();
 
 //@ts-ignore
 router.post("/:containerId/messages", async (req, res) => {
   const { containerId } = req.params;
-  const { message, attachments = [], stream = false } = req.body;
+  const { message, attachments = [], stream = false, model } = req.body;
+
+  if (model !== undefined && !isSupportedModel(model)) {
+    return res.status(400).json({
+      success: false,
+      error: `Unsupported model: ${model}`,
+    });
+  }
 
   if (!message || typeof message !== "string") {
     return res.status(400).json({
@@ -25,7 +33,8 @@ router.post("/:containerId/messages", async (req, res) => {
       const messageStream = llmService.sendMessageStream(
         containerId,
         message,
-        attachments
+        attachments,
+        model
       );
 
       const keepalive = setInterval(() => {
@@ -49,7 +58,8 @@ router.post("/:containerId/messages", async (req, res) => {
       const { userMessage, assistantMessage } = await llmService.sendMessage(
         containerId,
         message,
-        attachments
+        attachments,
+        model
       );
 
       res.json({

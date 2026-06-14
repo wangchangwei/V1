@@ -2,9 +2,9 @@
 
 import { Paperclip, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
-import { createContainer } from "../../../lib/backend/api";
+import { createContainer, getModels, Model } from "../../../lib/backend/api";
 
 interface ProjectPromptInterfaceProps {
   selectedTemplate: string;
@@ -19,8 +19,20 @@ export const ProjectPromptInterface = ({
   const [isCreatingFromPrompt, setIsCreatingFromPrompt] = useState(false);
   const [showCommunityDropdown, setShowCommunityDropdown] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
-  const [selectedModel, setSelectedModel] = useState("Claude Sonnet 4");
+  const [modelOptions, setModelOptions] = useState<Model[]>([]);
+  const [selectedModel, setSelectedModel] = useState<Model | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    getModels()
+      .then((models) => {
+        setModelOptions(models);
+        if (models.length > 0) {
+          setSelectedModel(models[0]);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handlePromptSubmit = async () => {
     if (!promptInput.trim() || isCreatingFromPrompt) return;
@@ -43,7 +55,7 @@ export const ProjectPromptInterface = ({
       router.push(
         `/projects/${containerId}?prompt=${encodeURIComponent(
           promptInput.trim()
-        )}`
+        )}&model=${encodeURIComponent(selectedModel?.id ?? "")}`
       );
     } catch (error) {
       console.error("Failed to create project from prompt:", error);
@@ -67,14 +79,13 @@ export const ProjectPromptInterface = ({
     "Django",
   ];
 
-  const modelOptions = ["Claude Sonnet 4"];
 
   const handleCommunitySelect = (option: string) => {
     onTemplateChange(option);
     setShowCommunityDropdown(false);
   };
 
-  const handleModelSelect = (option: string) => {
+  const handleModelSelect = (option: Model) => {
     setSelectedModel(option);
     setShowModelDropdown(false);
   };
@@ -183,7 +194,7 @@ export const ProjectPromptInterface = ({
                           setShowCommunityDropdown(false);
                         }}
                       >
-                        <span>{selectedModel}</span>
+                        <span>{selectedModel?.name ?? "Loading..."}</span>
                         <svg
                           height="12"
                           strokeLinejoin="round"
@@ -206,11 +217,11 @@ export const ProjectPromptInterface = ({
                         <div className="absolute top-full left-0 mt-2 w-40 bg-gray-900/90 backdrop-blur-xl border border-gray-600/30 rounded-lg shadow-xl z-50 bg-gradient-to-br from-white/[0.08] to-white/[0.02]">
                           {modelOptions.map((option) => (
                             <button
-                              key={option}
+                              key={option.id}
                               onClick={() => handleModelSelect(option)}
                               className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/10 first:rounded-t-lg last:rounded-b-lg transition-all duration-200 cursor-pointer"
                             >
-                              {option}
+                              {option.name}
                             </button>
                           ))}
                         </div>

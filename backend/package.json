@@ -4,11 +4,17 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "bun run src/index.ts"
+    "start": "bun run src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/express": "^5.0.2"
+    "@types/express": "^5.0.2",
+    "@types/node": "^25.9.3",
+    "@types/supertest": "^7.2.0",
+    "supertest": "^7.2.2",
+    "vitest": "^4.1.8"
   },
   "peerDependencies": {
     "typescript": "^5"

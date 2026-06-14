@@ -50,7 +50,15 @@ export const WorkspaceDashboard = ({
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(
     null
   );
+  const [selectedModel, setSelectedModel] = useState<string | undefined>(undefined);
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
+  const [sidebarWidth, setSidebarWidth] = useState<number>(320);
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const modelFromUrl = urlParams.get("model");
+    if (modelFromUrl) setSelectedModel(modelFromUrl);
+  }, []);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -103,10 +111,14 @@ export const WorkspaceDashboard = ({
               setHasProcessedPrompt(true);
               setIsLoading(true);
 
+              const modelFromUrl = urlParams.get("model");
+
               try {
                 const response = await sendChatMessage(
                   containerId,
-                  promptFromUrl
+                  promptFromUrl,
+                  [],
+                  modelFromUrl ?? undefined
                 );
                 if (response.success) {
                   setMessages([
@@ -279,13 +291,9 @@ export const WorkspaceDashboard = ({
         setStreamingMessageId(null);
 
         if (error.includes("413") || error.includes("Payload Too Large")) {
-          toast.error(
-            "Files too large. Please reduce file sizes and try again."
-          );
+          toast.error("Files too large. Please reduce file sizes and try again.");
         } else if (error.includes("502")) {
-          toast.error(
-            "请求超时或网关错误(502)。Cursor CLI 响应较慢时可能触发，请稍候再试；若通过端口转发访问，建议直接打开 localhost。"
-          );
+          toast.error("请求超时或网关错误(502)。Cursor CLI 响应较慢时可能触发，请稍候再试；若通过端口转发访问，建议直接打开 localhost。");
         } else {
           toast.error("Connection error. Please try again.");
         }
@@ -301,7 +309,8 @@ export const WorkspaceDashboard = ({
       () => {
         setIsLoading(false);
         setStreamingMessageId(null);
-      }
+      },
+      selectedModel
     );
 
     streamCancelRef.current = cancel;
@@ -371,6 +380,30 @@ export const WorkspaceDashboard = ({
     if (iframe) {
       iframe.src = iframe.src;
     }
+  };
+
+  const handleSidebarResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = sidebarWidth;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const delta = moveEvent.clientX - startX;
+      const newWidth = Math.min(Math.max(startWidth + delta, 240), 600);
+      setSidebarWidth(newWidth);
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
   };
 
   const handleExternalLink = () => {
@@ -681,12 +714,19 @@ export const WorkspaceDashboard = ({
           {sidebarOpen && (
             <div
               ref={sidebarRef}
-              className="w-80 bg-black/60 backdrop-blur-xl border-r border-gray-800/50 flex flex-col relative"
+              style={{ width: sidebarWidth }}
+              className="bg-black/60 backdrop-blur-xl border-r border-gray-800/50 flex flex-col relative shrink-0"
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
             >
               <div className="absolute inset-0 bg-gradient-to-b from-gray-700/10 via-gray-800/5 to-gray-700/10" />
+              {/* Resize handle */}
+              <div
+                onMouseDown={handleSidebarResize}
+                className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500/40 active:bg-blue-500/60 z-20 transition-colors"
+                title="Drag to resize"
+              />
 
               {isDragOver && (
                 <div className="absolute inset-0 bg-blue-500/10 backdrop-blur-sm border-2 border-dashed border-blue-400/60 rounded-lg z-50 flex items-center justify-center">

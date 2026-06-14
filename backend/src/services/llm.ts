@@ -1,31 +1,5 @@
-import path from "path";
-import fs from "fs/promises";
-import OpenAI from "openai";
 import { config } from "../../config";
 import prompt from "../utils/prompt.txt";
-import * as projectService from "./project";
-import { callCursorCli } from "./cursorCli";
-
-async function getProjectStructureHint(workspaceDir: string): Promise<string> {
-  try {
-    const hasSrc = await fs.stat(path.join(workspaceDir, "src")).then(s => s.isDirectory()).catch(() => false);
-    const appDir = hasSrc ? "src/app" : "app";
-    const tsconfig = await fs.readFile(path.join(workspaceDir, "tsconfig.json"), "utf-8").catch(() => "");
-    const aliasMatch = tsconfig.match(/"@\/\*"\s*:\s*\["([^"]+)"/);
-    const alias = aliasMatch ? aliasMatch[1].replace("/*", "") : (hasSrc ? "./src/*" : "./*");
-    return `\n\n<project-structure>\nThis project does NOT use a src/ directory. All source files are in the root:\n- App Router pages: ${appDir}/\n- Components: components/\n- TypeScript alias @/* maps to: ${alias}\nDo NOT create or write files under src/. Always write directly to ${appDir}/ and other root-level directories.\n</project-structure>`;
-  } catch {
-    return "";
-  }
-}
-
-const openai =
-  config.aiSdk.provider === "openai"
-    ? new OpenAI({
-        apiKey: config.aiSdk.apiKey,
-        baseURL: config.aiSdk.baseUrl || "https://api.openai.com/v1",
-      })
-    : null;
 
 export interface Message {
   id: string;
@@ -123,10 +97,162 @@ function buildMessageContent(
   return content;
 }
 
+// Detect whether base URL is Anthropic-compatible (MiniMax, Anthropic, etc.)
+// These providers use the /v1/messages endpoint instead of /v1/chat/completions
+function isAnthropicEndpoint(baseUrl: string): boolean {
+  const url = baseUrl.toLowerCase();
+  return (
+    url.includes("minimaxi") ||
+    url.includes("minimax") ||
+    url.includes("anthropic")
+  );
+}
+
+// Call Anthropic-compatible /v1/messages endpoint via native fetch
+async function anthropicChatComplete(
+  model: string,
+  systemPrompt: string,
+  messages: any[],
+  temperature: number,
+  stream: boolean
+): Promise<{ content: string; stream: AsyncGenerator<string> }> {
+  const anthropicMessages = messages
+    .filter((m) => m.role !== "system")
+    .map((m) => {
+      const text =
+        typeof m.content === "string" ? m.content : m.content?.map?.((c: any) => c.text ?? "").join("") ?? "";
+      return { role: m.role as "user" | "assistant", content: text };
+    });
+
+  const body: Record<string, any> = {
+    model,
+    messages: [{ role: "user", content: systemPrompt }, ...anthropicMessages],
+    max_tokens: 8192,
+    stream,
+  };
+
+  if (temperature !== undefined) {
+    body.temperature = temperature;
+  }
+
+  const response = await fetch(`${config.aiSdk.baseUrl}/v1/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${config.aiSdk.apiKey}`,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`AI API error ${response.status}: ${errorBody}`);
+  }
+
+  if (stream) {
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("No response body");
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    async function* gen(): AsyncGenerator<string> {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (data === "[DONE]") return;
+            try {
+              const json = JSON.parse(data);
+              const text = json.delta?.text ?? json.content?.[0]?.text ?? "";
+              if (text) yield text;
+            } catch {}
+          }
+        }
+      }
+    }
+
+    return { content: "", stream: gen() };
+  } else {
+    const data = await response.json();
+    const content =
+      data.content?.[0]?.text ?? data.choices?.[0]?.message?.content ?? "";
+    return { content, stream: null as any };
+  }
+}
+
+// Call standard OpenAI-compatible /v1/chat/completions endpoint via native fetch
+async function openaiChatComplete(
+  model: string,
+  messages: any[],
+  temperature: number,
+  stream: boolean
+): Promise<{ content: string; stream: AsyncGenerator<string> }> {
+  const response = await fetch(`${config.aiSdk.baseUrl}/v1/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${config.aiSdk.apiKey}`,
+    },
+    body: JSON.stringify({ model, messages, temperature, stream }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`AI API error ${response.status}: ${errorBody}`);
+  }
+
+  if (stream) {
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("No response body");
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    async function* gen(): AsyncGenerator<string> {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (data === "[DONE]") return;
+            try {
+              const json = JSON.parse(data);
+              const text = json.choices?.[0]?.delta?.content ?? "";
+              if (text) yield text;
+            } catch {}
+          }
+        }
+      }
+    }
+
+    return { content: "", stream: gen() };
+  } else {
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content ?? "";
+    return { content, stream: null as any };
+  }
+}
+
 export async function sendMessage(
   containerId: string,
   userMessage: string,
-  attachments: Attachment[] = []
+  attachments: Attachment[] = [],
+  model?: string
 ): Promise<{ userMessage: Message; assistantMessage: Message }> {
   const session = getOrCreateChatSession(containerId);
 
@@ -140,10 +266,8 @@ export async function sendMessage(
 
   session.messages.push(userMsg);
 
-  const systemPrompt = `${prompt}`;
-
   const openaiMessages = [
-    { role: "system" as const, content: systemPrompt },
+    { role: "system" as const, content: prompt },
     ...session.messages.map((msg) => ({
       role: msg.role as "user" | "assistant",
       content:
@@ -155,33 +279,29 @@ export async function sendMessage(
 
   let assistantContent: string;
 
-  if (config.aiSdk.provider === "cursor") {
-    const cursorMessages = openaiMessages.map((m) => ({
-      role: m.role as "user" | "assistant" | "system",
-      content: Array.isArray(m.content) ? m.content.map((c: any) => (c.text ?? c)).join("\n") : (m.content as string),
-    }));
-    let workspaceDir: string | undefined;
-    let enrichedPrompt = systemPrompt;
-    try {
-      const project = await projectService.getProjectByIdOrUuid(containerId);
-      workspaceDir = path.join(projectService.PROJECTS_DIR, project.id);
-      enrichedPrompt = systemPrompt + await getProjectStructureHint(workspaceDir);
-    } catch (_) {
-      // 项目不存在时不传 workspace，沿用 CLI 默认行为
-    }
-    assistantContent = await callCursorCli(enrichedPrompt, cursorMessages, workspaceDir);
-  } else if (openai) {
-    const completion = await openai.chat.completions.create({
-      model: config.aiSdk.model,
-      messages: openaiMessages,
-      //@ts-ignore
-      temperature: config.aiSdk.temperature,
-    });
-    assistantContent =
-      completion.choices[0]?.message?.content ||
-      "Sorry, I could not generate a response.";
+  const resolvedModel = model ?? config.aiSdk.model;
+
+  if (isAnthropicEndpoint(config.aiSdk.baseUrl)) {
+    const result = await anthropicChatComplete(
+      resolvedModel,
+      prompt,
+      openaiMessages,
+      config.aiSdk.temperature,
+      false
+    );
+    assistantContent = result.content;
   } else {
-    assistantContent = "AI provider not configured.";
+    const result = await openaiChatComplete(
+      resolvedModel,
+      openaiMessages,
+      config.aiSdk.temperature,
+      false
+    );
+    assistantContent = result.content;
+  }
+
+  if (!assistantContent) {
+    assistantContent = "Sorry, I could not generate a response.";
   }
 
   const assistantMsg: Message = {
@@ -203,7 +323,8 @@ export async function sendMessage(
 export async function* sendMessageStream(
   containerId: string,
   userMessage: string,
-  attachments: Attachment[] = []
+  attachments: Attachment[] = [],
+  model?: string
 ): AsyncGenerator<{ type: "user" | "assistant" | "done"; data: any }> {
   const session = getOrCreateChatSession(containerId);
 
@@ -218,10 +339,8 @@ export async function* sendMessageStream(
   session.messages.push(userMsg);
   yield { type: "user", data: userMsg };
 
-  const systemPrompt = `${prompt}`;
-
   const openaiMessages = [
-    { role: "system" as const, content: systemPrompt },
+    { role: "system" as const, content: prompt },
     ...session.messages.map((msg) => ({
       role: msg.role as "user" | "assistant",
       content:
@@ -234,24 +353,30 @@ export async function* sendMessageStream(
   const assistantId = `assistant-${Date.now()}`;
   let assistantContent = "";
 
-  console.log("[LLM] provider =", config.aiSdk.provider);
-  if (config.aiSdk.provider === "cursor") {
-    console.log("[LLM] Calling Cursor CLI...");
-    const cursorMessages = openaiMessages.map((m) => ({
-      role: m.role as "user" | "assistant" | "system",
-      content: Array.isArray(m.content) ? m.content.map((c: any) => (c.text ?? c)).join("\n") : (m.content as string),
-    }));
-    let workspaceDir: string | undefined;
-    let enrichedPrompt = systemPrompt;
-    try {
-      const project = await projectService.getProjectByIdOrUuid(containerId);
-      workspaceDir = path.join(projectService.PROJECTS_DIR, project.id);
-      console.log("[LLM] Cursor workspace:", workspaceDir);
-      enrichedPrompt = systemPrompt + await getProjectStructureHint(workspaceDir);
-    } catch (_) {
-      // 项目不存在时不传 workspace
-    }
-    assistantContent = await callCursorCli(enrichedPrompt, cursorMessages, workspaceDir);
+  const resolvedModel = model ?? config.aiSdk.model;
+
+  let chunks: AsyncGenerator<string>;
+  if (isAnthropicEndpoint(config.aiSdk.baseUrl)) {
+    const result = await anthropicChatComplete(
+      resolvedModel,
+      prompt,
+      openaiMessages,
+      config.aiSdk.temperature,
+      true
+    );
+    chunks = result.stream;
+  } else {
+    const result = await openaiChatComplete(
+      resolvedModel,
+      openaiMessages,
+      config.aiSdk.temperature,
+      true
+    );
+    chunks = result.stream;
+  }
+
+  for await (const chunk of chunks) {
+    assistantContent += chunk;
     yield {
       type: "assistant",
       data: {
@@ -261,31 +386,6 @@ export async function* sendMessageStream(
         timestamp: new Date().toISOString(),
       },
     };
-  } else if (openai) {
-    console.log("[LLM] Using OpenAI/OpenRouter API");
-    const stream = await openai.chat.completions.create({
-      model: config.aiSdk.model,
-      messages: openaiMessages,
-      //@ts-ignore
-      temperature: config.aiSdk.temperature,
-      stream: true,
-    });
-
-    for await (const chunk of stream) {
-      const delta = chunk.choices[0]?.delta;
-      if (delta?.content) {
-        assistantContent += delta.content;
-        yield {
-          type: "assistant",
-          data: {
-            id: assistantId,
-            role: "assistant",
-            content: assistantContent,
-            timestamp: new Date().toISOString(),
-          },
-        };
-      }
-    }
   }
 
   const finalAssistantMsg: Message = {

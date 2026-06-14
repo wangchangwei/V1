@@ -82,6 +82,16 @@ export interface ChatHistoryResponse {
   sessionId: string;
 }
 
+export interface Model {
+  id: string;
+  name: string;
+}
+
+export interface GetModelsResponse {
+  success: boolean;
+  models: Model[];
+}
+
 const FETCH_TIMEOUT_MS = 120000;
 
 async function fetchApi<T>(
@@ -204,16 +214,33 @@ export async function deleteContainer(
   return response;
 }
 
+export async function getChatHistory(
+  containerId: string
+): Promise<ChatHistoryResponse> {
+  const response = await fetchApi<ChatHistoryResponse>(
+    `/chat/${containerId}/messages`
+  );
+  return response;
+}
+
+export async function getModels(): Promise<Model[]> {
+  const response = await fetchApi<GetModelsResponse>("/models");
+  return response.models ?? [];
+}
+
 export async function sendChatMessage(
   containerId: string,
   message: string,
-  attachments?: any[]
+  attachments?: any[],
+  model?: string
 ): Promise<ChatResponse> {
+  const body: Record<string, any> = { message, attachments };
+  if (model) body.model = model;
   const response = await fetchApi<ChatResponse>(
     `/chat/${containerId}/messages`,
     {
       method: "POST",
-      body: JSON.stringify({ message, attachments }),
+      body: JSON.stringify(body),
     }
   );
   return response;
@@ -225,16 +252,20 @@ export function sendChatMessageStream(
   attachments: any[] = [],
   onMessage: (data: any) => void,
   onError?: (error: string) => void,
-  onComplete?: () => void
+  onComplete?: () => void,
+  model?: string
 ): () => void {
   let abortController = new AbortController();
+
+  const body: Record<string, any> = { message, attachments, stream: true };
+  if (model) body.model = model;
 
   fetch(`${API_BASE_URL}/chat/${containerId}/messages`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ message, attachments, stream: true }),
+    body: JSON.stringify(body),
     signal: abortController.signal,
   })
     .then(async (response) => {
@@ -298,13 +329,4 @@ export function sendChatMessageStream(
   return () => {
     abortController.abort();
   };
-}
-
-export async function getChatHistory(
-  containerId: string
-): Promise<ChatHistoryResponse> {
-  const response = await fetchApi<ChatHistoryResponse>(
-    `/chat/${containerId}/messages`
-  );
-  return response;
 }

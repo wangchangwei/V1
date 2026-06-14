@@ -2,6 +2,8 @@ import express from "express";
 import { config } from "../config";
 import chatRoutes from "./routes/chat";
 import containerRoutes from "./routes/containers";
+import { initModels } from "./services/models";
+import modelsRoutes from "./routes/models";
 import { recoverRunningProjects } from "./services/project";
 
 const app = express();
@@ -32,6 +34,9 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 app.use("/containers", containerRoutes);
 app.use("/chat", chatRoutes);
+app.use("/models", modelsRoutes);
+
+initModels(config.aiSdk.baseUrl);
 
 const PORT = Number(process.env.PORT || 4002);
 
@@ -43,7 +48,7 @@ function startServer() {
 
   server.on("listening", () => {
     console.log(`December API running on port ${PORT}`);
-    console.log(`AI provider: ${config.aiSdk.provider}`);
+    console.log(`AI model: ${config.aiSdk.model}`);
     recoverRunningProjects().catch((e) =>
       console.error("[recover] Failed to recover running projects:", e)
     );
@@ -74,3 +79,5 @@ function startServer() {
 startServer();
 
 export default app;
+// DEBUG
+process.nextTick(() => console.log('[DEBUG] AI_BASE_URL env:', process.env.AI_BASE_URL));

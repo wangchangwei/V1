@@ -95,8 +95,13 @@ export async function recoverRunningProjects(): Promise<void> {
       // 进程已 detached，无法拿到句柄；用 null 占位，只需标记 running
       runningProcesses.set(projectId, { process: null as any, port: meta.port });
       console.log(`[recover] Project ${projectId} already running on port ${meta.port}`);
+    } else {
+      // 端口不再监听，说明进程已退出，从 store 中移除，避免误报为 running
+      delete store[projectId];
+      console.log(`[recover] Project ${projectId} on port ${meta.port} is not listening — removed from store`);
     }
   }
+  await saveProjectsStore(store);
 }
 
 async function initializeProjectOnHost(projectId: string): Promise<string> {
@@ -197,7 +202,7 @@ export async function listProjects(): Promise<any[]> {
       image: "local",
       created: meta.createdAt,
       assignedPort: port,
-      url: port ? `http://localhost:${port}` : null,
+      url: port ? `http://127.0.0.1:${port}` : null,
       ports: port ? [{ private: 3000, public: port, type: "tcp" }] : [],
       labels: { project: "december", containerId: projectId },
     });
@@ -241,7 +246,7 @@ export async function registerAndStartProject(projectId: string): Promise<{
       containerId: projectId,
       status: "running",
       port: assignedPort,
-      url: `http://localhost:${assignedPort}`,
+      url: `http://127.0.0.1:${assignedPort}`,
       createdAt: store[projectId].createdAt,
       type: "Next.js App",
     },
@@ -285,7 +290,7 @@ export async function createProject(): Promise<{
       containerId: projectId,
       status: "running",
       port: assignedPort,
-      url: `http://localhost:${assignedPort}`,
+      url: `http://127.0.0.1:${assignedPort}`,
       createdAt: store[projectId].createdAt,
       type: "Next.js App",
     },

@@ -72,6 +72,8 @@ const parseSpecialTags = (
     instructionsReminder:
       /<instructions-reminder>([\s\S]*?)<\/instructions-reminder>/g,
     lastDiff: /<last-diff>([\s\S]*?)<\/last-diff>/g,
+    // Match fenced code blocks: ```...``` (multi-line)
+    fencedCode: /```[\s\S]*?```/g,
   };
 
   const getExecutedKey = (containerId: string) => `executed_${containerId}`;
@@ -271,6 +273,43 @@ const parseSpecialTags = (
   return components.length > 0 ? components : null;
 };
 
+// Collapsible code block used for both dec-code tags and inline fenced code
+const CollapsibleCode: React.FC<{ code: string; label?: string; labelColor?: string }> = ({
+  code,
+  label = "Code Block",
+  labelColor = "gray",
+}) => {
+  const [expanded, setExpanded] = useState(false);
+  const colorMap: Record<string, string> = {
+    gray: "text-gray-400",
+    blue: "text-blue-400",
+  };
+  return (
+    <div className="my-4 bg-gray-500/10 border border-gray-500/30 rounded-lg overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-2 bg-gray-500/20 px-3 py-2 border-b border-gray-500/30 hover:bg-gray-500/30 transition-colors text-left"
+      >
+        <Code className={`w-4 h-4 ${colorMap[labelColor] ?? "text-gray-400"}`} />
+        <span className={`text-sm font-medium ${colorMap[labelColor] ?? "text-gray-400"}`}>
+          {label}
+        </span>
+        <span className="ml-auto text-xs text-white/50">
+          {expanded ? "▲ 收起" : "▼ 展开"}
+        </span>
+      </button>
+      {expanded && (
+        <div className="p-3">
+          <pre className="bg-gray-800/60 rounded p-3 text-xs overflow-x-auto">
+            <code className="text-gray-300">{code.trim()}</code>
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const renderSpecialComponent = (
   type: string,
   match: RegExpExecArray,
@@ -279,25 +318,12 @@ const renderSpecialComponent = (
   switch (type) {
     case "write":
       return (
-        <div
+        <CollapsibleCode
           key={`write-${index}`}
-          className="my-4 bg-blue-500/10 border border-blue-500/30 rounded-lg overflow-hidden"
-        >
-          <div className="flex items-center gap-2 bg-blue-500/20 px-3 py-2 border-b border-blue-500/30">
-            <File className="w-4 h-4 text-blue-400" />
-            <span className="text-sm font-medium text-blue-400">
-              Create/Update File
-            </span>
-            <code className="ml-auto text-xs text-blue-300 bg-blue-500/20 px-2 py-0.5 rounded">
-              {match[1]}
-            </code>
-          </div>
-          <div className="p-3">
-            <pre className="bg-gray-800/60 rounded p-3 text-xs overflow-x-auto">
-              <code className="text-gray-300">{match[2].trim()}</code>
-            </pre>
-          </div>
-        </div>
+          code={match[2].trim()}
+          label={`Create/Update ${match[1]}`}
+          labelColor="blue"
+        />
       );
 
     case "rename":
@@ -363,22 +389,10 @@ const renderSpecialComponent = (
 
     case "code":
       return (
-        <div
+        <CollapsibleCode
           key={`code-${index}`}
-          className="my-4 bg-gray-500/10 border border-gray-500/30 rounded-lg overflow-hidden"
-        >
-          <div className="flex items-center gap-2 bg-gray-500/20 px-3 py-2 border-b border-gray-500/30">
-            <Code className="w-4 h-4 text-gray-400" />
-            <span className="text-sm font-medium text-gray-400">
-              Code Block
-            </span>
-          </div>
-          <div className="p-3">
-            <pre className="bg-gray-800/60 rounded p-3 text-xs overflow-x-auto">
-              <code className="text-gray-300">{match[1].trim()}</code>
-            </pre>
-          </div>
-        </div>
+          code={match[1].trim()}
+        />
       );
 
     case "thinking":
@@ -517,6 +531,14 @@ const renderSpecialComponent = (
           </div>
           <div className="text-sm text-teal-300">{match[1].trim()}</div>
         </div>
+      );
+
+    case "fencedCode":
+      return (
+        <CollapsibleCode
+          key={`fenced-${index}`}
+          code={match[0].slice(3, -3).trim()}
+        />
       );
 
     default:
