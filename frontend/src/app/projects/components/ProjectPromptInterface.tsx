@@ -126,7 +126,7 @@ export const ProjectPromptInterface = ({
                 <textarea
                   id="chat-main-textarea"
                   name="content"
-                  placeholder="Ask December to build..."
+                  placeholder="Ask V1 to build..."
                   spellCheck="false"
                   value={promptInput}
                   onChange={(e) => setPromptInput(e.target.value)}

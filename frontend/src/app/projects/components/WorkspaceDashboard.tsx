@@ -536,7 +536,7 @@ export const WorkspaceDashboard = ({
       <div className="flex items-center gap-2 mb-2">
         <img
           className="w-4 h-4 rounded"
-          src="/december-logo.png"
+          src="/v1-logo.png"
           alt="Assistant Avatar"
         />
         <span className="text-sm font-medium text-white/90">Assistant</span>

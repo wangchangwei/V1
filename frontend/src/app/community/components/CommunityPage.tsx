@@ -91,7 +91,7 @@ export const CommunityPage = () => {
                 Community Projects
               </h1>
               <p className="text-gray-400 text-lg max-w-2xl mx-auto">
-                Discover amazing projects built by the December community. Get
+                Discover amazing projects built by the V1 community. Get
                 inspired, fork, and build upon the work of others.
               </p>
             </div>
@@ -144,7 +144,7 @@ export const CommunityPage = () => {
         <footer className="mt-20 pt-12 border-t border-gray-800/50 max-w-7xl mx-auto px-6">
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-500">
-              © 2025 December. Build the future, one container at a time.
+              © 2025 V1. Build the future, one container at a time.
             </div>
             <div className="flex items-center gap-6 text-sm text-gray-400">
               <a href="#" className="hover:text-white transition-colors">

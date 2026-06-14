@@ -33,7 +33,7 @@ export const ProjectsPage = () => {
               Your Projects
             </h2>
             <p className="text-gray-400">
-              Manage and access your December projects.
+              Manage and access your V1 projects.
             </p>
           </div>
           <button

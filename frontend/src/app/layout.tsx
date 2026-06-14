@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "December - Your Personal Full Stack Engineer",
+  title: "V1 - Your Personal Full Stack Engineer",
   description:
     "Idea to app in seconds, with your personal full stack engineer. Build, deploy, and manage containerized applications with AI assistance.",
   keywords: [
@@ -26,11 +26,11 @@ export const metadata: Metadata = {
     "deployment",
     "coding assistant",
   ],
-  authors: [{ name: "December" }],
-  creator: "December",
-  publisher: "December",
+  authors: [{ name: "V1" }],
+  creator: "V1",
+  publisher: "V1",
   openGraph: {
-    title: "December - Your Personal Full Stack Engineer",
+    title: "V1 - Your Personal Full Stack Engineer",
     description:
       "Idea to app in seconds, with your personal full stack engineer",
     type: "website",
@@ -38,7 +38,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "December - Your Personal Full Stack Engineer",
+    title: "V1 - Your Personal Full Stack Engineer",
     description:
       "Idea to app in seconds, with your personal full stack engineer",
   },
