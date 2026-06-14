@@ -13,6 +13,8 @@ import {
   XCircle,
 } from "lucide-react";
 import React, { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface Attachment {
   type: "image" | "document";
@@ -348,7 +350,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, formatMessage
                 </div>
               )}
               {message.content && (
-                <div className="prose prose-sm prose-invert max-w-none [&_h2]:text-white [&_h3]:text-white [&_h4]:text-white [&_strong]:text-white [&_code]:bg-gray-600/60 [&_code]:text-gray-200 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:border [&_code]:border-gray-500/30 whitespace-pre-wrap">
+                <div className="chat-markdown max-w-none">
                   {splitByCodeBlocks(message.content).map((seg, i) =>
                     seg.type === "code" ? (
                       <CollapsibleCode
@@ -358,11 +360,27 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, formatMessage
                         label={seg.label}
                       />
                     ) : (
-                      <span key={i} className="contents">
-                        {formatMessageContent
-                          ? formatMessageContent(seg.content)
-                          : seg.content}
-                      </span>
+                      <ReactMarkdown
+                        key={i}
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          // Inline code only — fenced code blocks have been
+                          // extracted by splitByCodeBlocks and rendered above.
+                          code({ className, children, ...rest }) {
+                            const isInline = !(rest as any).node?.position;
+                            if (isInline) {
+                              return (
+                                <code className="chat-inline-code">
+                                  {children}
+                                </code>
+                              );
+                            }
+                            return <code className={className}>{children}</code>;
+                          },
+                        }}
+                      >
+                        {seg.content}
+                      </ReactMarkdown>
                     )
                   )}
                 </div>
