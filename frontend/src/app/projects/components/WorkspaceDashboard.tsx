@@ -26,6 +26,7 @@ import {
   sendChatMessage,
   sendChatMessageStream,
 } from "../../../lib/backend/api";
+import { findStyleByName, prependStyle } from "../../../lib/styles";
 import { ChatInput } from "../../create/components/ChatInput";
 import { ChatMessage } from "../../create/components/ChatMessage";
 import CodeEditor from "../../editor/CodeEditor";
@@ -121,11 +122,13 @@ export const WorkspaceDashboard = ({
               setIsLoading(true);
 
               const modelFromUrl = urlParams.get("model");
+              const styleEntry = findStyleByName(urlParams.get("style"));
+              const finalMessage = prependStyle(promptFromUrl, styleEntry);
 
               try {
                 const response = await sendChatMessage(
                   containerId,
-                  promptFromUrl,
+                  finalMessage,
                   [],
                   modelFromUrl ?? undefined
                 );

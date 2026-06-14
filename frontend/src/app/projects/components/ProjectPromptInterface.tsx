@@ -1,10 +1,11 @@
 "use client";
 
-import { Paperclip, Sparkles } from "lucide-react";
+import { Paperclip, Palette, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
 import { createContainer, enrichPrompt, getModels, Model } from "../../../lib/backend/api";
+import { STYLES } from "../../../lib/styles";
 
 interface ProjectPromptInterfaceProps {
   selectedTemplate: string;
@@ -19,9 +20,11 @@ export const ProjectPromptInterface = ({
   const [isCreatingFromPrompt, setIsCreatingFromPrompt] = useState(false);
   const [showCommunityDropdown, setShowCommunityDropdown] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [showStyleDropdown, setShowStyleDropdown] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
   const [modelOptions, setModelOptions] = useState<Model[]>([]);
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
+  const [selectedStyle, setSelectedStyle] = useState("Default");
   const router = useRouter();
 
   useEffect(() => {
@@ -56,7 +59,7 @@ export const ProjectPromptInterface = ({
       router.push(
         `/projects/${containerId}?prompt=${encodeURIComponent(
           promptInput.trim()
-        )}&model=${encodeURIComponent(selectedModel?.id ?? "")}`
+        )}&model=${encodeURIComponent(selectedModel?.id ?? "")}&style=${encodeURIComponent(selectedStyle)}`
       );
     } catch (error) {
       console.error("Failed to create project from prompt:", error);
@@ -83,11 +86,20 @@ export const ProjectPromptInterface = ({
   const handleCommunitySelect = (option: string) => {
     onTemplateChange(option);
     setShowCommunityDropdown(false);
+    setShowStyleDropdown(false);
+    setShowModelDropdown(false);
   };
 
   const handleModelSelect = (option: Model) => {
     setSelectedModel(option);
     setShowModelDropdown(false);
+    setShowStyleDropdown(false);
+    setShowCommunityDropdown(false);
+  };
+
+  const handleStyleSelect = (name: string) => {
+    setSelectedStyle(name);
+    setShowStyleDropdown(false);
   };
 
   const handleImageClick = () => {
@@ -157,8 +169,8 @@ export const ProjectPromptInterface = ({
                   disabled={isCreatingFromPrompt}
                   className="resize-none overflow-auto w-full flex-1 bg-transparent p-4 text-sm outline-none ring-0 placeholder:text-gray-400 text-white disabled:opacity-50"
                   style={{
-                    height: "54px",
-                    minHeight: "54px",
+                    height: "240px",
+                    minHeight: "240px",
                     maxHeight: "384px",
                   }}
                 />
@@ -171,7 +183,11 @@ export const ProjectPromptInterface = ({
                         onClick={() => {
                           setShowCommunityDropdown(!showCommunityDropdown);
                           setShowModelDropdown(false);
+                          setShowStyleDropdown(false);
                         }}
+                        aria-label="Choose template"
+                        aria-haspopup="listbox"
+                        aria-expanded={showCommunityDropdown}
                       >
                         <Sparkles className="w-3.5 h-3.5 text-purple-400" />
                         <span>{selectedTemplate}...</span>
@@ -194,10 +210,16 @@ export const ProjectPromptInterface = ({
                       </button>
 
                       {showCommunityDropdown && (
-                        <div className="absolute top-full left-0 mt-2 w-48 bg-gray-900/90 backdrop-blur-xl border border-gray-600/30 rounded-lg shadow-xl z-50 bg-gradient-to-br from-white/[0.08] to-white/[0.02]">
+                        <div
+                          role="listbox"
+                          aria-label="Template"
+                          className="absolute top-full left-0 mt-2 w-48 bg-gray-900/90 backdrop-blur-xl border border-gray-600/30 rounded-lg shadow-xl z-50 bg-gradient-to-br from-white/[0.08] to-white/[0.02]"
+                        >
                           {communityOptions.map((option) => (
                             <button
                               key={option}
+                              role="option"
+                              aria-selected={selectedTemplate === option}
                               onClick={() => handleCommunitySelect(option)}
                               className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/10 first:rounded-t-lg last:rounded-b-lg transition-all duration-200 cursor-pointer"
                             >
@@ -213,9 +235,67 @@ export const ProjectPromptInterface = ({
                         className="flex items-center gap-2 px-3 py-1.5 bg-gray-800/20 hover:bg-gray-700/30 border border-gray-600/20 hover:border-gray-500/30 rounded-lg text-xs font-medium text-gray-300 hover:text-white transition-all duration-300 backdrop-blur-md bg-gradient-to-r from-white/[0.05] to-transparent cursor-pointer"
                         type="button"
                         onClick={() => {
+                          setShowStyleDropdown(!showStyleDropdown);
+                          setShowCommunityDropdown(false);
+                          setShowModelDropdown(false);
+                        }}
+                        aria-label="Choose visual style"
+                        aria-haspopup="listbox"
+                        aria-expanded={showStyleDropdown}
+                      >
+                        <Palette className="w-3.5 h-3.5 text-pink-400" />
+                        <span>{selectedStyle}</span>
+                        <svg
+                          height="12"
+                          strokeLinejoin="round"
+                          viewBox="0 0 16 16"
+                          width="12"
+                          className={`text-gray-400 transition-transform duration-200 ${
+                            showStyleDropdown ? "rotate-180" : ""
+                          }`}
+                        >
+                          <path
+                            fillRule="evenodd"
+                            clipRule="evenodd"
+                            d="M12.0607 6.74999L11.5303 7.28032L8.7071 10.1035C8.31657 10.4941 7.68341 10.4941 7.29288 10.1035L4.46966 7.28032L3.93933 6.74999L4.99999 5.68933L5.53032 6.21966L7.99999 8.68933L10.4697 6.21966L11 5.68933L12.0607 6.74999Z"
+                            fill="currentColor"
+                          />
+                        </svg>
+                      </button>
+
+                      {showStyleDropdown && (
+                        <div
+                          role="listbox"
+                          aria-label="Visual style"
+                          className="absolute top-full left-0 mt-2 w-52 max-h-[280px] overflow-y-auto bg-gray-900/90 backdrop-blur-xl border border-gray-600/30 rounded-lg shadow-xl z-50 bg-gradient-to-br from-white/[0.08] to-white/[0.02]"
+                        >
+                          {STYLES.map((style) => (
+                            <button
+                              key={style.name}
+                              role="option"
+                              aria-selected={selectedStyle === style.name}
+                              onClick={() => handleStyleSelect(style.name)}
+                              className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/10 first:rounded-t-lg last:rounded-b-lg transition-all duration-200 cursor-pointer"
+                            >
+                              {style.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="relative">
+                      <button
+                        className="flex items-center gap-2 px-3 py-1.5 bg-gray-800/20 hover:bg-gray-700/30 border border-gray-600/20 hover:border-gray-500/30 rounded-lg text-xs font-medium text-gray-300 hover:text-white transition-all duration-300 backdrop-blur-md bg-gradient-to-r from-white/[0.05] to-transparent cursor-pointer"
+                        type="button"
+                        onClick={() => {
                           setShowModelDropdown(!showModelDropdown);
                           setShowCommunityDropdown(false);
+                          setShowStyleDropdown(false);
                         }}
+                        aria-label="Choose model"
+                        aria-haspopup="listbox"
+                        aria-expanded={showModelDropdown}
                       >
                         <span>{selectedModel?.name ?? "Loading..."}</span>
                         <svg
@@ -237,10 +317,16 @@ export const ProjectPromptInterface = ({
                       </button>
 
                       {showModelDropdown && (
-                        <div className="absolute top-full left-0 mt-2 w-40 bg-gray-900/90 backdrop-blur-xl border border-gray-600/30 rounded-lg shadow-xl z-50 bg-gradient-to-br from-white/[0.08] to-white/[0.02]">
+                        <div
+                          role="listbox"
+                          aria-label="Model"
+                          className="absolute top-full left-0 mt-2 w-40 bg-gray-900/90 backdrop-blur-xl border border-gray-600/30 rounded-lg shadow-xl z-50 bg-gradient-to-br from-white/[0.08] to-white/[0.02]"
+                        >
                           {modelOptions.map((option) => (
                             <button
                               key={option.id}
+                              role="option"
+                              aria-selected={selectedModel?.id === option.id}
                               onClick={() => handleModelSelect(option)}
                               className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/10 first:rounded-t-lg last:rounded-b-lg transition-all duration-200 cursor-pointer"
                             >
@@ -298,12 +384,13 @@ export const ProjectPromptInterface = ({
                   </div>
                 </div>
 
-                {(showCommunityDropdown || showModelDropdown) && (
+                {(showCommunityDropdown || showModelDropdown || showStyleDropdown) && (
                   <div
                     className="fixed inset-0 z-40"
                     onClick={() => {
                       setShowCommunityDropdown(false);
                       setShowModelDropdown(false);
+                      setShowStyleDropdown(false);
                     }}
                   />
                 )}
