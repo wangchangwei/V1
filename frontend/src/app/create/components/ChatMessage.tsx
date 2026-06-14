@@ -188,9 +188,10 @@ const formatTimestamp = (timestamp: string) => {
 const CollapsibleCode: React.FC<{
   code: string;
   language?: string;
-}> = ({ code, language }) => {
+  label?: string;
+}> = ({ code, language, label: customLabel }) => {
   const [expanded, setExpanded] = useState(false);
-  const label = language ? `Code (${language})` : "Code Block";
+  const label = customLabel ?? (language ? `Code (${language})` : "Code Block");
   return (
     <div className="my-3 bg-gray-500/10 border border-gray-500/30 rounded-lg overflow-hidden">
       <button
@@ -218,22 +219,37 @@ const CollapsibleCode: React.FC<{
 // Split content by fenced code blocks (```lang\n...\n```); returns alternating
 // text and code segments so code blocks can be rendered as CollapsibleCode while
 // the rest of the message keeps its normal markdown rendering.
+//
+// Also handles legacy <dec-code>...</dec-code> and
+// <dec-write file_path="...">...</dec-write> tags from messages produced
+// before the OpenAI tool-use refactor.
 function splitByCodeBlocks(
   content: string
-): Array<{ type: "text" | "code"; content: string; language?: string }> {
-  const segments: Array<{ type: "text" | "code"; content: string; language?: string }> = [];
-  const fencedRe = /```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)```/g;
+): Array<{ type: "text" | "code"; content: string; language?: string; label?: string }> {
+  const segments: Array<{ type: "text" | "code"; content: string; language?: string; label?: string }> = [];
+  // Match fenced code, dec-code, or dec-write in one pass.
+  const re = /```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)```|<dec-code>([\s\S]*?)<\/dec-code>|<dec-write\s+file_path="([^"]+)">([\s\S]*?)<\/dec-write>/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
-  while ((match = fencedRe.exec(content)) !== null) {
+  while ((match = re.exec(content)) !== null) {
     if (match.index > lastIndex) {
       segments.push({ type: "text", content: content.slice(lastIndex, match.index) });
     }
-    segments.push({
-      type: "code",
-      content: match[2],
-      language: match[1] || undefined,
-    });
+    if (match[0].startsWith("```")) {
+      segments.push({
+        type: "code",
+        content: match[2],
+        language: match[1] || undefined,
+      });
+    } else if (match[0].startsWith("<dec-code>")) {
+      segments.push({ type: "code", content: match[3] });
+    } else if (match[0].startsWith("<dec-write")) {
+      segments.push({
+        type: "code",
+        content: match[5],
+        label: `Create/Update ${match[4]}`,
+      });
+    }
     lastIndex = match.index + match[0].length;
   }
   if (lastIndex < content.length) {
@@ -339,6 +355,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, formatMessage
                         key={i}
                         code={seg.content}
                         language={seg.language}
+                        label={seg.label}
                       />
                     ) : (
                       <span key={i} className="contents">
