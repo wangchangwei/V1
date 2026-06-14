@@ -147,6 +147,63 @@ const formatTimestamp = (timestamp: string) => {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 };
 
+const CollapsibleCode: React.FC<{
+  code: string;
+  language?: string;
+}> = ({ code, language }) => {
+  const [expanded, setExpanded] = useState(false);
+  const label = language ? `Code (${language})` : "Code Block";
+  return (
+    <div className="my-3 bg-gray-500/10 border border-gray-500/30 rounded-lg overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-2 bg-gray-500/20 px-3 py-2 border-b border-gray-500/30 hover:bg-gray-500/30 transition-colors text-left"
+      >
+        <Code className="w-4 h-4 text-gray-400" />
+        <span className="text-sm font-medium text-gray-400">{label}</span>
+        <span className="ml-auto text-xs text-white/50">
+          {expanded ? "▲ 收起" : "▼ 展开"}
+        </span>
+      </button>
+      {expanded && (
+        <div className="p-3">
+          <pre className="bg-gray-800/60 rounded p-3 text-xs overflow-x-auto">
+            <code className="text-gray-300">{code.trim()}</code>
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Split content by fenced code blocks (```lang\n...\n```); returns alternating
+// text and code segments so code blocks can be rendered as CollapsibleCode while
+// the rest of the message keeps its normal markdown rendering.
+function splitByCodeBlocks(
+  content: string
+): Array<{ type: "text" | "code"; content: string; language?: string }> {
+  const segments: Array<{ type: "text" | "code"; content: string; language?: string }> = [];
+  const fencedRe = /```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)```/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = fencedRe.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ type: "text", content: content.slice(lastIndex, match.index) });
+    }
+    segments.push({
+      type: "code",
+      content: match[2],
+      language: match[1] || undefined,
+    });
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < content.length) {
+    segments.push({ type: "text", content: content.slice(lastIndex) });
+  }
+  return segments;
+}
+
 const formatFileSize = (bytes: number) => {
   if (bytes === 0) return "0 B";
   const k = 1024;
@@ -155,7 +212,7 @@ const formatFileSize = (bytes: number) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 };
 
-export const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
+export const ChatMessage: React.FC<ChatMessageProps> = ({ message, formatMessageContent }) => {
   const toolCalls = message.toolCalls ?? [];
 
   return (
@@ -238,7 +295,21 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
               )}
               {message.content && (
                 <div className="prose prose-sm prose-invert max-w-none [&_h2]:text-white [&_h3]:text-white [&_h4]:text-white [&_strong]:text-white [&_code]:bg-gray-600/60 [&_code]:text-gray-200 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:border [&_code]:border-gray-500/30 whitespace-pre-wrap">
-                  {message.content}
+                  {splitByCodeBlocks(message.content).map((seg, i) =>
+                    seg.type === "code" ? (
+                      <CollapsibleCode
+                        key={i}
+                        code={seg.content}
+                        language={seg.language}
+                      />
+                    ) : (
+                      <span key={i} className="contents">
+                        {formatMessageContent
+                          ? formatMessageContent(seg.content)
+                          : seg.content}
+                      </span>
+                    )
+                  )}
                 </div>
               )}
             </div>
