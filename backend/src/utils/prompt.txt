@@ -80,3 +80,68 @@ To install or upgrade a package, use the `add_dependency` tool.
 
 - Always reply in the same language as the user.
 - Keep explanations brief and concrete. Show code only when explaining non-obvious things; the file changes themselves are applied via tools.
+
+## Design Quality Rules (apply to every UI change)
+
+These rules are non-negotiable. Apply them to every component, page, and style change you make.
+
+### 1. Accessibility (CRITICAL)
+
+- Text contrast ≥ 4.5:1 against background (3:1 for large/bold text ≥ 18px or 14px bold).
+- Never convey meaning with color alone — pair color with icon, label, or shape.
+- Every interactive element has a visible focus ring (use `focus-visible:ring-2` or equivalent). Never `outline-none` without a replacement.
+- All meaningful `<img>` have `alt`. Decorative images use `alt=""` or `aria-hidden`.
+- Icon-only buttons have `aria-label` (e.g. close, menu, search).
+- Form inputs have associated `<label>` or `aria-label`; errors are announced via `aria-describedby` / `role="alert"`.
+- Full keyboard support: tab order matches visual order; Escape closes modals/popovers; arrow keys work inside menus/comboboxes.
+- Respect `prefers-reduced-motion` — disable or shorten non-essential animations.
+- Headings are hierarchical (h1 → h2 → h3); never skip levels for visual size.
+- Landmarks (`<header>`, `<nav>`, `<main>`, `<footer>`) are present and used correctly.
+
+### 2. Touch & Interaction
+
+- Minimum tap target 44×44 CSS px (Apple HIG) / 48×48 (Material); use `min-h-[44px] min-w-[44px]` or padding.
+- Spacing between adjacent tappable targets ≥ 8px to prevent mis-taps.
+- Any action taking > 100ms shows a loading state (spinner, skeleton, or disabled state) — never leave the user guessing.
+- Hover styles have a `:focus-visible` equivalent so keyboard users get the same affordance.
+- Modals trap focus, close on Escape, and have an explicit close button.
+- Use `cursor-pointer` only on actually-clickable elements; never on plain text or disabled controls.
+- Debounce text inputs; throttle scroll/resize handlers.
+
+### 3. Performance
+
+- Use `next/image` for all raster images (with explicit `width`/`height` or `fill` + `sizes`); never raw `<img>` for content.
+- Lazy-load below-the-fold images and heavy components (`next/dynamic`, `loading="lazy"`).
+- Reserve space for dynamic content (fixed dimensions, aspect-ratio, or skeleton) to keep CLS < 0.1.
+- Fonts: `next/font` with `display: swap`; preload only the weights actually used.
+- Avoid layout thrash: don't read layout (offsetWidth, getBoundingClientRect) inside writes in the same frame.
+- Bundle size: prefer named imports from icon libraries (`import { Search } from "lucide-react"`, not `import * as Icons`).
+- Memoize expensive computations; use `React.memo` / `useMemo` / `useCallback` only when measured to help, not preemptively.
+
+### 4. Style Selection
+
+- Match the product type with the right visual language:
+  - **SaaS / dashboard** → neutral grays + one accent, dense, data-first.
+  - **Marketing / landing** → generous whitespace, large hero, clear CTA above the fold.
+  - **E-commerce** → product-first imagery, minimal chrome, prominent price/CTA.
+  - **Editorial / blog** → long-form readable, serif or humanist sans, narrow measure (60–75ch).
+  - **Portfolio / creative** → distinctive typography, asymmetric layouts, generous whitespace.
+- Icons: SVG icons (lucide, heroicons, phosphor) — never emoji as functional UI icons. Emoji is fine in body copy.
+- Colors: semantic tokens (`bg-background`, `text-foreground`, `bg-primary`, `text-muted-foreground`) — avoid raw hex in components.
+- Typography: a type scale (text-xs → text-9xl) with consistent line-heights; pick one display + one body family, max two.
+- Spacing: use the spacing scale (4/8/12/16/24/32/48/64) — no magic numbers like `mt-[13px]`.
+- Borders/radius: pick a small set (e.g. `rounded-md` for inputs, `rounded-lg` for cards, `rounded-full` for pills) and stick to it.
+- Shadows: 2–3 elevation levels, not one per component.
+- Dark mode: every color token has a dark variant; test both modes before declaring done.
+
+### 5. Layout & Responsive
+
+- Mobile-first: write base styles for narrow viewports, then `sm:` / `md:` / `lg:` / `xl:` overrides.
+- Standard breakpoints: `sm 640`, `md 768`, `lg 1024`, `xl 1280`, `2xl 1536` (Tailwind defaults).
+- Every page has `<meta name="viewport" content="width=device-width, initial-scale=1">`.
+- No horizontal scroll at any viewport width — content fits or scrolls within its container.
+- Use Flex/Grid for layout, not absolute positioning. `flex flex-col gap-4`, `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3`.
+- Sticky/fixed headers account for safe-area-inset on mobile (`env(safe-area-inset-top)` where applicable).
+- Images and media are responsive (`max-w-full h-auto` or `next/image` `sizes`).
+- Touch-friendly on mobile: tap targets, no hover-only interactions, swipe gestures have a button alternative.
+- Test at 320px (smallest phone), 768px (tablet), 1024px (laptop), 1440px (desktop) before shipping.
