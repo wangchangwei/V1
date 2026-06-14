@@ -92,6 +92,12 @@ export interface GetModelsResponse {
   models: Model[];
 }
 
+export interface EnrichPromptResponse {
+  success: boolean;
+  enriched?: string;
+  error?: string;
+}
+
 const FETCH_TIMEOUT_MS = 120000;
 
 async function fetchApi<T>(
@@ -226,6 +232,23 @@ export async function getChatHistory(
 export async function getModels(): Promise<Model[]> {
   const response = await fetchApi<GetModelsResponse>("/models");
   return response.models ?? [];
+}
+
+export async function enrichPrompt(
+  prompt: string,
+  template: string,
+  model?: string
+): Promise<string> {
+  const body: Record<string, string> = { prompt, template };
+  if (model) body.model = model;
+  const response = await fetchApi<EnrichPromptResponse>("/prompts/enrich", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  if (!response.success || !response.enriched) {
+    throw new Error(response.error || "AI enrichment failed");
+  }
+  return response.enriched;
 }
 
 export async function sendChatMessage(

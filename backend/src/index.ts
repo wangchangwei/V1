@@ -4,6 +4,7 @@ import chatRoutes from "./routes/chat";
 import containerRoutes from "./routes/containers";
 import { initModels } from "./services/models";
 import modelsRoutes from "./routes/models";
+import promptRoutes from "./routes/prompts";
 import { recoverRunningProjects } from "./services/project";
 
 const app = express();
@@ -35,6 +36,7 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use("/containers", containerRoutes);
 app.use("/chat", chatRoutes);
 app.use("/models", modelsRoutes);
+app.use("/prompts", promptRoutes);
 
 initModels(config.aiSdk.baseUrl);
 
