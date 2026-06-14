@@ -104,45 +104,31 @@ export async function recoverRunningProjects(): Promise<void> {
   await saveProjectsStore(store);
 }
 
+// Vendored Next.js template used to scaffold new V1 projects.
+// The source lives at backend/template/ so we don't reach out to a remote
+// repo at runtime — updates flow through normal git pulls of V1 itself.
+const TEMPLATE_DIR = path.join(import.meta.dirname, "..", "..", "template");
+
 async function initializeProjectOnHost(projectId: string): Promise<string> {
   await ensureProjectsDir();
   const projectDir = path.join(PROJECTS_DIR, projectId);
 
-  console.log(`Initializing project on host: ${projectDir}`);
+  console.log(`Initializing project on host from ${TEMPLATE_DIR}`);
 
-  await fs.mkdir(projectDir, { recursive: true });
-
-  const templateRepo = "https://github.com/ntegrals/december-nextjs-template.git";
-  console.log(`Cloning template from ${templateRepo}...`);
-
+  // Copy the vendored template into a fresh project directory. fs.cp
+  // requires the destination to NOT exist, so we remove any leftover first
+  // (initialization is only called for brand-new project ids).
+  await fs.rm(projectDir, { recursive: true, force: true });
   try {
-    await execAsync(`git clone --depth 1 "${templateRepo}" temp-template`, {
-      cwd: projectDir,
-      timeout: 60000,
-    });
-    console.log("Template cloned successfully");
-
-    const tempDir = path.join(projectDir, "temp-template");
-    const files = await fs.readdir(tempDir);
-
-    for (const file of files) {
-      if (file === ".git") continue;
-      await fs.rename(
-        path.join(tempDir, file),
-        path.join(projectDir, file)
-      );
-    }
-
-    await fs.rm(tempDir, { recursive: true, force: true });
-    console.log("Template files moved to project directory");
+    await fs.cp(TEMPLATE_DIR, projectDir, { recursive: true });
+    console.log(`Template copied to ${projectDir}`);
   } catch (error) {
-    console.error("Git clone failed:", error);
+    console.error("Template copy failed:", error);
     throw new Error(
-      `Failed to clone template: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to copy template: ${error instanceof Error ? error.message : String(error)}`
     );
   }
 
-  console.log(`Project initialized at ${projectDir}`);
   return projectDir;
 }
 
