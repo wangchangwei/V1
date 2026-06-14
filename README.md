@@ -1,5 +1,7 @@
 # V1
 
+**English** | [简体中文](README.zh-CN.md)
+
 > An open-source, self-hosted alternative to [v0.dev](https://v0.app) — describe the web app you want in natural language, watch it come to life in a live preview, and iterate through chat.
 
 ## Screenshots
