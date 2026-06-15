@@ -1,6 +1,7 @@
 "use client";
 
-import { Calendar, FolderOpen, MoreHorizontal, Play, Square, Trash2 } from "lucide-react";
+import { Calendar, FolderOpen, MoreHorizontal, Pencil, Play, Square, Trash2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 import {
   Container,
@@ -8,15 +9,20 @@ import {
   getContainers,
   startContainer,
   stopContainer,
+  updateProjectDisplayName,
 } from "../../../lib/backend/api";
 
 export const ProjectsGrid = () => {
+  const t = useTranslations("home");
+  const tc = useTranslations("common");
   const [containers, setContainers] = useState<Container[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dockerError, setDockerError] = useState<string | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<Container | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const fetchContainers = async () => {
@@ -93,6 +99,34 @@ export const ProjectsGrid = () => {
     }
   };
 
+  const handleRename = (container: Container) => {
+    setDropdownOpen(null);
+    setRenameTarget(container);
+    setRenameValue(
+      container.displayName || container.name.replace("/", "") || container.id.slice(0, 8)
+    );
+  };
+
+  const handleRenameConfirm = async () => {
+    if (!renameTarget || !renameValue.trim()) return;
+    setActionLoading(renameTarget.id);
+    try {
+      await updateProjectDisplayName(renameTarget.id, renameValue.trim());
+      setContainers((prev) =>
+        prev.map((c) =>
+          c.id === renameTarget.id
+            ? { ...c, displayName: renameValue.trim() }
+            : c
+        )
+      );
+      setRenameTarget(null);
+    } catch (error) {
+      console.error("Failed to rename project:", error);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
       month: "short",
@@ -106,7 +140,7 @@ export const ProjectsGrid = () => {
       <div className="flex items-center justify-center h-64">
         <div className="flex flex-col items-center gap-4">
           <div className="w-8 h-8 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
-          <span className="text-white/70 font-medium">Loading projects...</span>
+          <span className="text-white/70 font-medium">{t("loading")}</span>
         </div>
       </div>
     );
@@ -117,14 +151,14 @@ export const ProjectsGrid = () => {
       <div className="flex flex-col items-center justify-center h-64 gap-6">
         <div className="bg-red-500/10 backdrop-blur-md rounded-2xl border border-red-500/20 p-8 text-center shadow-xl max-w-md">
           <div className="text-red-400 text-xl font-semibold mb-2">
-            加载失败
+            {t("loadFailed")}
           </div>
           <div className="text-white/60 mb-4">{error}</div>
           <button
             onClick={fetchContainers}
             className="px-6 py-3 bg-white text-black hover:bg-gray-100 rounded-lg transition-all duration-200 font-medium shadow-lg hover:shadow-xl cursor-pointer"
           >
-            Retry
+            {tc("retry")}
           </button>
         </div>
       </div>
@@ -156,17 +190,16 @@ export const ProjectsGrid = () => {
             </svg>
           </div>
           <h3 className="text-xl font-semibold text-white mb-3">
-            No projects yet
+            {t("noProjects")}
           </h3>
           <p className="text-gray-400 mb-6">
-            Use the prompt above to create your first project with AI
-            assistance.
+            {t("noProjectsHint")}
           </p>
           <button
             onClick={handleProjectCreated}
             className="px-6 py-3 bg-white/10 hover:bg-white/15 text-white border border-white/20 hover:border-white/30 rounded-lg transition-all duration-200 font-medium backdrop-blur-sm cursor-pointer"
           >
-            Create Your First Project
+            {t("createFirst")}
           </button>
         </div>
       </div>
@@ -199,7 +232,8 @@ export const ProjectsGrid = () => {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-1">
                 <h3 className="text-white font-medium text-base truncate">
-                  {container.name?.replace("/", "") ||
+                  {container.displayName ||
+                    container.name?.replace("/", "") ||
                     `dec-nextjs-${container.id.slice(0, 8)}`}
                 </h3>
                 <span
@@ -209,26 +243,26 @@ export const ProjectsGrid = () => {
                       : "bg-gray-500/20 text-gray-400 border border-gray-500/30"
                   }`}
                 >
-                  {container.status === "running" ? "Running" : "Exited"}
+                  {container.status === "running" ? t("running") : t("exited")}
                 </span>
               </div>
 
               <div className="flex items-center gap-4 text-sm text-gray-400">
                 <div className="flex items-center gap-1">
                   <Calendar className="w-4 h-4" />
-                  <span>Created {formatDate(container.created)}</span>
+                  <span>{t("created")} {formatDate(container.created)}</span>
                 </div>
                 {container.assignedPort && (
-                  <span>Port :{container.assignedPort}</span>
+                  <span>{t("port")} :{container.assignedPort}</span>
                 )}
-                <span>Next.js</span>
+                <span>{t("nextjs")}</span>
               </div>
               <div
                 className="flex items-center gap-1.5 text-xs text-gray-500 mt-1 font-mono truncate"
-                title={`本地目录（用户目录下）: december-projects/${container.id}`}
+                title={`ID: ${container.id}`}
               >
                 <FolderOpen className="w-3.5 h-3.5 flex-shrink-0" />
-                <span>december-projects/{container.id}</span>
+                <span>{container.id}</span>
               </div>
             </div>
 
@@ -239,7 +273,7 @@ export const ProjectsGrid = () => {
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600/20 hover:bg-green-600/30 text-green-400 border border-green-600/30 hover:border-green-500/50 rounded-md text-sm font-medium transition-all duration-200 cursor-pointer"
                 >
                   <Play className="w-3.5 h-3.5" />
-                  Start
+                  {tc("start")}
                 </button>
               )}
 
@@ -247,7 +281,7 @@ export const ProjectsGrid = () => {
                 href={`/projects/${container.id}`}
                 className="px-4 py-1.5 bg-gray-700/50 hover:bg-gray-600/60 text-white border border-gray-600/50 hover:border-gray-500/70 rounded-md text-sm font-medium transition-all duration-200 cursor-pointer"
               >
-                Open Project
+                {t("open")}
               </a>
 
               <div className="relative z-[9999]">
@@ -282,7 +316,7 @@ export const ProjectsGrid = () => {
                         ) : (
                           <Square className="w-3.5 h-3.5" />
                         )}
-                        Stop
+                        {tc("stop")}
                       </button>
                     ) : (
                       <button
@@ -298,9 +332,21 @@ export const ProjectsGrid = () => {
                         ) : (
                           <Play className="w-3.5 h-3.5" />
                         )}
-                        Start
+                        {tc("start")}
                       </button>
                     )}
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRename(container);
+                      }}
+                      disabled={actionLoading === container.id}
+                      className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700/50 transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      {t("rename")}
+                    </button>
 
                     <button
                       onClick={(e) => {
@@ -315,7 +361,7 @@ export const ProjectsGrid = () => {
                       ) : (
                         <Trash2 className="w-3.5 h-3.5" />
                       )}
-                      Delete
+                      {tc("delete")}
                     </button>
                   </div>
                 )}
@@ -324,6 +370,41 @@ export const ProjectsGrid = () => {
           </div>
         </div>
       ))}
+
+      {renameTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-gray-800 border border-gray-600/40 rounded-xl shadow-2xl w-full max-w-md p-6">
+            <h3 className="text-white font-semibold text-lg mb-4">{t("rename")}</h3>
+            <input
+              type="text"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleRenameConfirm();
+                if (e.key === "Escape") setRenameTarget(null);
+              }}
+              placeholder={t("enterName")}
+              autoFocus
+              className="w-full px-3 py-2 bg-gray-900 border border-gray-600/40 rounded-lg text-white text-sm placeholder:text-gray-500 focus:outline-none focus:border-gray-400 mb-4"
+            />
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => setRenameTarget(null)}
+                className="px-4 py-2 text-sm text-gray-300 hover:text-white transition-colors"
+              >
+                {tc("cancel")}
+              </button>
+              <button
+                onClick={handleRenameConfirm}
+                disabled={!renameValue.trim() || actionLoading !== null}
+                className="px-4 py-2 text-sm bg-white text-black hover:bg-gray-100 rounded-lg font-medium transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                {tc("save")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

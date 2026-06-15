@@ -109,6 +109,30 @@ router.delete("/:containerId", async (req, res) => {
   }
 });
 
+router.patch("/:containerId", async (req, res) => {
+  const { containerId } = req.params;
+  const { displayName } = req.body;
+
+  if (!displayName || typeof displayName !== "string" || !displayName.trim()) {
+    res.status(400).json({ success: false, error: "displayName is required" });
+    return;
+  }
+
+  try {
+    await projectService.updateProjectDisplayName(containerId, displayName.trim());
+    res.json({ success: true, displayName: displayName.trim() });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("not found")) {
+      res.status(404).json({ success: false, error: error.message });
+    } else {
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+});
+
 router.get("/:containerId/files", async (req, res) => {
   const { containerId } = req.params;
   const { path: containerPath = "/app/my-nextjs-app" } = req.query;

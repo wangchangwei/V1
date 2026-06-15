@@ -1,0 +1,144 @@
+{
+  "nav": {
+    "projects": "项目",
+    "logo": "changwei",
+    "home": "首页"
+  },
+  "common": {
+    "projects": "项目",
+    "delete": "删除",
+    "cancel": "取消",
+    "confirm": "确认",
+    "close": "关闭",
+    "save": "保存",
+    "error": "错误",
+    "success": "成功",
+    "loading": "加载中...",
+    "notFound": "未找到",
+    "back": "返回",
+    "start": "启动",
+    "stop": "停止",
+    "retry": "重试"
+  },
+  "home": {
+    "title": "你想做什么？",
+    "placeholder": "告诉 V1 你想做什么...",
+    "loading": "加载中...",
+    "loadFailed": "加载失败",
+    "noProjects": "暂无项目",
+    "noProjectsHint": "使用上面的输入框，让 AI 帮你创建第一个项目。",
+    "createFirst": "创建第一个项目",
+    "import": "导入项目",
+    "created": "创建于",
+    "running": "运行中",
+    "exited": "已停止",
+    "port": "端口",
+    "nextjs": "Next.js",
+    "open": "打开项目",
+    "noProject": "未选择项目",
+    "rename": "重命名",
+    "enterName": "输入项目名称"
+  },
+  "templates": {
+    "title": "模板",
+    "subtitle": "使用现成模板快速开始"
+  },
+  "styles": {
+    "chooseStyle": "选择视觉风格",
+    "visualStyle": "视觉风格",
+    "default": "默认",
+    "minimalism": "极简主义",
+    "glassmorphism": "玻璃拟态",
+    "brutalism": "粗野主义",
+    "neubrutalism": "新粗野主义",
+    "bentoGrid": "便当网格",
+    "darkOled": "深色 OLED",
+    "neumorphism": "新拟态",
+    "editorial": "杂志编辑",
+    "cyberpunk": "赛博朋克",
+    "softUi": "柔和 UI",
+    "aiNative": "AI 原生"
+  },
+  "import": {
+    "title": "导入项目",
+    "subtitle": "从 GitHub 或本地 ZIP 包导入",
+    "githubTab": "GitHub",
+    "zipTab": "ZIP 包",
+    "repoLabel": "GitHub 仓库地址",
+    "repoPlaceholder": "https://github.com/user/repo 或 user/repo",
+    "branchLabel": "分支",
+    "branchOptional": "（可选，默认为仓库默认分支）",
+    "branchPlaceholder": "main / dev / feature/xxx",
+    "repoHint": "支持 public 仓库。格式：https://github.com/user/repo 或简写 user/repo",
+    "importGithub": "从 GitHub 导入",
+    "cloning": "克隆中...",
+    "dropOrSelect": "拖拽 ZIP 文件到此处，或点击选择",
+    "zipOnly": "仅支持 .zip 格式",
+    "importZip": "导入 ZIP 包",
+    "importing": "导入中...",
+    "remove": "移除",
+    "zipRequired": "请上传 .zip 文件",
+    "drop": "将项目 ZIP 拖放到这里",
+    "select": "或选择文件",
+    "uploading": "上传中...",
+    "success": "导入成功！正在跳转...",
+    "error": "导入失败",
+    "cloningToast": "正在克隆..."
+  },
+  "workspace": {
+    "preview": "预览",
+    "code": "代码",
+    "refresh": "刷新预览",
+    "openTab": "在新标签页打开",
+    "export": "导出",
+    "deploy": "部署",
+    "mobile": "切换到移动视图",
+    "desktop": "切换到桌面视图",
+    "thinking": "思考中...",
+    "error": "抱歉，遇到了一些问题，请重试。",
+    "dropFiles": "将文件拖放到这里",
+    "supportedFiles": "支持图片、PDF 和文档",
+    "fileTooLarge": "文件过大，请压缩后重试。",
+    "networkError": "连接错误，请重试。",
+    "sidebarTitle": "AI 助手",
+    "projectLabel": "Next.js 项目"
+  },
+  "welcome": {
+    "title": "欢迎来到你的 Next.js 项目！",
+    "line1": "我在这里帮助你构建、修改和部署你的应用。",
+    "line2": "我可以帮助你：",
+    "line3": "添加新功能和组件",
+    "line4": "修改现有代码",
+    "line5": "安装包和依赖",
+    "line6": "调试和排错",
+    "line7": "优化性能",
+    "line8": "描述你想做什么，我会帮你实现！"
+  },
+  "create": {
+    "title": "创建项目",
+    "uploading": "上传中...",
+    "building": "构建中...",
+    "error": "项目创建失败，请重试。"
+  },
+  "editor": {
+    "files": "文件",
+    "readme": "说明"
+  },
+  "community": {
+    "title": "社区",
+    "subtitle": "探索和分享项目模板",
+    "featured": "精选项目"
+  },
+  "footer": {
+    "copyright": "© 2025 changwei. 未来容器，一手搞定。",
+    "terms": "服务条款",
+    "privacy": "隐私政策",
+    "status": "状态"
+  },
+  "lang": {
+    "en": "English",
+    "zh": "中文",
+    "switchLabel": "切换语言",
+    "switchAria": "切换语言"
+  }
+}

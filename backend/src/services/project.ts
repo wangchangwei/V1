@@ -15,6 +15,7 @@ const PROJECTS_JSON = path.join(DATA_DIR, "projects.json");
 interface ProjectMeta {
   port: number;
   createdAt: string;
+  displayName?: string;
 }
 
 interface ProjectsStore {
@@ -39,6 +40,18 @@ async function loadProjectsStore(): Promise<ProjectsStore> {
 async function saveProjectsStore(store: ProjectsStore): Promise<void> {
   await fs.mkdir(DATA_DIR, { recursive: true });
   await fs.writeFile(PROJECTS_JSON, JSON.stringify(store, null, 2));
+}
+
+export async function updateProjectDisplayName(
+  projectId: string,
+  displayName: string
+): Promise<void> {
+  const store = await loadProjectsStore();
+  if (!store[projectId]) {
+    throw new Error(`Project ${projectId} not found`);
+  }
+  store[projectId].displayName = displayName;
+  await saveProjectsStore(store);
 }
 
 async function isPortAvailable(port: number): Promise<boolean> {
@@ -189,6 +202,7 @@ export async function listProjects(): Promise<any[]> {
       created: meta.createdAt,
       assignedPort: port,
       url: port ? `http://127.0.0.1:${port}` : null,
+      displayName: meta.displayName,
       ports: port ? [{ private: 3000, public: port, type: "tcp" }] : [],
       labels: { project: "december", containerId: projectId },
     });

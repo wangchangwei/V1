@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
 import { createContainer, enrichPrompt, getModels, Model } from "../../../lib/backend/api";
-import { STYLES } from "../../../lib/styles";
+import { STYLES, findStyleByName } from "../../../lib/styles";
+import { useTranslations } from "next-intl";
 
 interface ProjectPromptInterfaceProps {
   selectedTemplate: string;
@@ -16,6 +17,8 @@ export const ProjectPromptInterface = ({
   selectedTemplate,
   onTemplateChange,
 }: ProjectPromptInterfaceProps) => {
+  const t = useTranslations("home");
+  const ts = useTranslations("styles");
   const [promptInput, setPromptInput] = useState("");
   const [isCreatingFromPrompt, setIsCreatingFromPrompt] = useState(false);
   const [showCommunityDropdown, setShowCommunityDropdown] = useState(false);
@@ -146,7 +149,7 @@ export const ProjectPromptInterface = ({
           style={{ fontFamily: "Suisse" }}
           className="text-2xl font-semibold mb-6 bg-gradient-to-r from-white via-gray-100 to-gray-300 bg-clip-text text-transparent"
         >
-          What do you want to build?
+          {t("title")}
         </h1>
       </div>
 
@@ -161,7 +164,7 @@ export const ProjectPromptInterface = ({
                 <textarea
                   id="chat-main-textarea"
                   name="content"
-                  placeholder="Ask V1 to build..."
+                  placeholder={t("placeholder")}
                   spellCheck="false"
                   value={promptInput}
                   onChange={(e) => setPromptInput(e.target.value)}
@@ -239,12 +242,12 @@ export const ProjectPromptInterface = ({
                           setShowCommunityDropdown(false);
                           setShowModelDropdown(false);
                         }}
-                        aria-label="Choose visual style"
+                        aria-label={ts("chooseStyle")}
                         aria-haspopup="listbox"
                         aria-expanded={showStyleDropdown}
                       >
                         <Palette className="w-3.5 h-3.5 text-pink-400" />
-                        <span>{selectedStyle}</span>
+                        <span>{ts(findStyleByName(selectedStyle)?.labelKey ?? "default")}</span>
                         <svg
                           height="12"
                           strokeLinejoin="round"
@@ -266,7 +269,7 @@ export const ProjectPromptInterface = ({
                       {showStyleDropdown && (
                         <div
                           role="listbox"
-                          aria-label="Visual style"
+                          aria-label={ts("visualStyle")}
                           className="absolute top-full left-0 mt-2 w-52 max-h-[280px] overflow-y-auto bg-gray-900/90 backdrop-blur-xl border border-gray-600/30 rounded-lg shadow-xl z-50 bg-gradient-to-br from-white/[0.08] to-white/[0.02]"
                         >
                           {STYLES.map((style) => (
@@ -277,7 +280,7 @@ export const ProjectPromptInterface = ({
                               onClick={() => handleStyleSelect(style.name)}
                               className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/10 first:rounded-t-lg last:rounded-b-lg transition-all duration-200 cursor-pointer"
                             >
-                              {style.name}
+                              {ts(style.labelKey)}
                             </button>
                           ))}
                         </div>

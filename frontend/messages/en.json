@@ -1,0 +1,144 @@
+{
+  "nav": {
+    "projects": "Projects",
+    "logo": "changwei",
+    "home": "Home"
+  },
+  "common": {
+    "projects": "Projects",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "close": "Close",
+    "save": "Save",
+    "error": "Error",
+    "success": "Success",
+    "loading": "Loading...",
+    "notFound": "Not Found",
+    "back": "Back",
+    "start": "Start",
+    "stop": "Stop",
+    "retry": "Retry"
+  },
+  "home": {
+    "title": "What do you want to build?",
+    "placeholder": "Ask V1 to build...",
+    "loading": "Loading projects...",
+    "loadFailed": "加载失败",
+    "noProjects": "No projects yet",
+    "noProjectsHint": "Use the prompt above to create your first project with AI assistance.",
+    "createFirst": "Create Your First Project",
+    "import": "Import Project",
+    "created": "Created",
+    "running": "Running",
+    "exited": "Exited",
+    "port": "Port",
+    "nextjs": "Next.js",
+    "open": "Open Project",
+    "noProject": "No project selected",
+    "rename": "Rename",
+    "enterName": "Enter project name"
+  },
+  "templates": {
+    "title": "Templates",
+    "subtitle": "Start fast with ready-made templates"
+  },
+  "styles": {
+    "chooseStyle": "Choose visual style",
+    "visualStyle": "Visual style",
+    "default": "Default",
+    "minimalism": "Minimalism",
+    "glassmorphism": "Glassmorphism",
+    "brutalism": "Brutalism",
+    "neubrutalism": "Neubrutalism",
+    "bentoGrid": "Bento Grid",
+    "darkOled": "Dark OLED",
+    "neumorphism": "Neumorphism",
+    "editorial": "Editorial",
+    "cyberpunk": "Cyberpunk",
+    "softUi": "Soft UI",
+    "aiNative": "AI-Native"
+  },
+  "import": {
+    "title": "Import Project",
+    "subtitle": "Import from GitHub or local ZIP",
+    "githubTab": "GitHub",
+    "zipTab": "ZIP Package",
+    "repoLabel": "GitHub repository URL",
+    "repoPlaceholder": "https://github.com/user/repo or user/repo",
+    "branchLabel": "Branch",
+    "branchOptional": "(optional, defaults to the repo's default branch)",
+    "branchPlaceholder": "main / dev / feature/xxx",
+    "repoHint": "Public repositories supported. Format: https://github.com/user/repo or shorthand user/repo",
+    "importGithub": "Import from GitHub",
+    "cloning": "Cloning...",
+    "dropOrSelect": "Drag and drop a ZIP file here, or click to select",
+    "zipOnly": "Only .zip format supported",
+    "importZip": "Import ZIP Package",
+    "importing": "Importing...",
+    "remove": "Remove",
+    "zipRequired": "Please upload a .zip file",
+    "drop": "Drop your project ZIP here",
+    "select": "or select a file",
+    "uploading": "Uploading...",
+    "success": "Project imported successfully",
+    "error": "Import failed. Please try again.",
+    "cloningToast": "Cloning..."
+  },
+  "workspace": {
+    "preview": "Preview",
+    "code": "Code",
+    "refresh": "Refresh preview",
+    "openTab": "Open in new tab",
+    "export": "Export",
+    "deploy": "Deploy",
+    "mobile": "Switch to mobile view",
+    "desktop": "Switch to desktop view",
+    "thinking": "Thinking...",
+    "error": "Sorry, I encountered an error. Please try again.",
+    "dropFiles": "Drop files here",
+    "supportedFiles": "Images, PDFs, and documents supported",
+    "fileTooLarge": "Files too large. Please reduce file sizes and try again.",
+    "networkError": "Connection error. Please try again.",
+    "sidebarTitle": "AI Assistant",
+    "projectLabel": "Next.js Project"
+  },
+  "welcome": {
+    "title": "Welcome to your Next.js project!",
+    "line1": "I'm here to help you build, modify, and deploy your application.",
+    "line2": "I can help you with:",
+    "line3": "Adding new features and components",
+    "line4": "Modifying existing code",
+    "line5": "Installing packages and dependencies",
+    "line6": "Debugging and troubleshooting",
+    "line7": "Optimizing performance",
+    "line8": "Just describe what you'd like to build or change, and I'll help you make it happen!"
+  },
+  "create": {
+    "title": "Create Project",
+    "uploading": "Uploading...",
+    "building": "Building...",
+    "error": "Failed to create project. Please try again."
+  },
+  "editor": {
+    "files": "Files",
+    "readme": "README"
+  },
+  "community": {
+    "title": "Community",
+    "subtitle": "Explore and share project templates",
+    "featured": "Featured Projects"
+  },
+  "footer": {
+    "copyright": "© 2025 changwei. Build the future, one container at a time.",
+    "terms": "Terms",
+    "privacy": "Privacy",
+    "status": "Status"
+  },
+  "lang": {
+    "en": "English",
+    "zh": "中文",
+    "switchLabel": "Change language",
+    "switchAria": "Change language"
+  }
+}

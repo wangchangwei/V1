@@ -1,4 +1,9 @@
-export const API_BASE_URL = "http://localhost:4002";
+export const API_BASE_URL =
+  typeof window !== "undefined"
+    ? // In browser: use current host so LAN access works (e.g. http://192.168.1.x:4002)
+      `${window.location.protocol}//${window.location.hostname}:4002`
+    : // Server-side: fallback to localhost
+      "http://localhost:4002";
 
 export interface Container {
   id: string;
@@ -14,6 +19,7 @@ export interface Container {
     type: string;
   }>;
   labels: Record<string, string>;
+  displayName?: string;
 }
 
 export interface Message {
@@ -158,6 +164,16 @@ export async function getContainers(): Promise<GetContainersResult> {
     dockerAvailable: response.dockerAvailable ?? true,
     error: response.error,
   };
+}
+
+export async function updateProjectDisplayName(
+  projectId: string,
+  displayName: string
+): Promise<{ success: boolean; displayName: string }> {
+  return fetchApi(`/containers/${projectId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ displayName }),
+  });
 }
 
 export async function createContainer(): Promise<CreateContainerResponse> {
