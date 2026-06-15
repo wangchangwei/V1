@@ -236,6 +236,24 @@ export async function deleteContainer(
   return response;
 }
 
+export interface DeployResponse {
+  success: boolean;
+  url: string;
+  deploymentId: string;
+  status: string;
+  error?: string;
+}
+
+export async function deployToVercel(
+  containerId: string,
+  vercelToken: string
+): Promise<DeployResponse> {
+  return fetchApi<DeployResponse>(`/deploy/${containerId}`, {
+    method: "POST",
+    body: JSON.stringify({ vercelToken }),
+  });
+}
+
 export async function getChatHistory(
   containerId: string
 ): Promise<ChatHistoryResponse> {

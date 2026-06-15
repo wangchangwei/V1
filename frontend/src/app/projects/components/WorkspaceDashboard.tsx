@@ -21,6 +21,7 @@ import { useEffect, useRef, useState } from "react";
 import { API_BASE_URL } from "@/lib/backend/api";
 import { toast } from "react-hot-toast";
 import {
+  deployToVercel,
   getChatHistory,
   Message,
   sendChatMessage,
@@ -47,6 +48,10 @@ export const WorkspaceDashboard = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [containerUrl, setContainerUrl] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [isDeploying, setIsDeploying] = useState<boolean>(false);
+  const [deployToken, setDeployToken] = useState<string>("");
+  const [showDeployModal, setShowDeployModal] = useState<boolean>(false);
+  const [deployUrl, setDeployUrl] = useState<string | null>(null);
   const [hasProcessedPrompt, setHasProcessedPrompt] = useState<boolean>(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(
     null
@@ -94,7 +99,12 @@ export const WorkspaceDashboard = ({
               (c: any) => c.id === containerId
             );
             if (container && container.url) {
-              setContainerUrl(container.url);
+              // Replace 127.0.0.1 with current host so LAN access works
+              const url = container.url.replace(
+                "http://127.0.0.1:",
+                `${window.location.protocol}//${window.location.hostname}:`
+              );
+              setContainerUrl(url);
             }
           }
         } catch (error) {
@@ -457,6 +467,28 @@ export const WorkspaceDashboard = ({
     }
   };
 
+  const handleDeploy = async () => {
+    if (!deployToken.trim()) {
+      toast.error("Please enter your Vercel token");
+      return;
+    }
+    setIsDeploying(true);
+    try {
+      const result = await deployToVercel(containerId, deployToken.trim());
+      if (result.success) {
+        setDeployUrl(result.url);
+        toast.success("Deployed! Opening...");
+        window.open(result.url, "_blank", "noopener,noreferrer");
+      } else {
+        toast.error(result.error || "Deploy failed");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Deploy failed");
+    } finally {
+      setIsDeploying(false);
+    }
+  };
+
   const formatMessageContent = (content: string): React.ReactNode[] => {
     return content.split("\n").map((line: string, index: number) => {
       if (line.startsWith("## ")) {
@@ -711,12 +743,7 @@ export const WorkspaceDashboard = ({
             </button>
 
             <button
-              onClick={() =>
-                toast("This feature is coming soon!", {
-                  icon: "🙌",
-                  duration: 1000,
-                })
-              }
+              onClick={() => setShowDeployModal(true)}
               className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white text-black hover:bg-gray-100 rounded-md text-xs font-medium transition-all shadow-sm hover:shadow-lg"
             >
               <Globe className="w-3.5 h-3.5" />
@@ -832,6 +859,76 @@ export const WorkspaceDashboard = ({
           </div>
         </div>
       </div>
+
+      {showDeployModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-gray-800 border border-gray-600/40 rounded-xl shadow-2xl w-full max-w-md p-6">
+            <h3 className="text-white font-semibold text-lg mb-1">Deploy to Vercel</h3>
+            <p className="text-gray-400 text-sm mb-4">
+              Enter your Vercel token to deploy this project.
+            </p>
+            {deployUrl ? (
+              <div className="space-y-3">
+                <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 text-green-400 text-sm">
+                  Deployed successfully!
+                </div>
+                <a
+                  href={deployUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-blue-400 hover:text-blue-300 text-sm"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  {deployUrl}
+                </a>
+                <button
+                  onClick={() => { setShowDeployModal(false); setDeployUrl(null); setDeployToken(""); }}
+                  className="w-full px-4 py-2 bg-white text-black rounded-lg font-medium hover:bg-gray-100 transition-colors"
+                >
+                  Done
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <input
+                  type="password"
+                  value={deployToken}
+                  onChange={(e) => setDeployToken(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleDeploy(); if (e.key === "Escape") setShowDeployModal(false); }}
+                  placeholder="Vercel token (e.g. xxxxxxxxxx)"
+                  autoFocus
+                  className="w-full px-3 py-2 bg-gray-900 border border-gray-600/40 rounded-lg text-white text-sm placeholder:text-gray-500 focus:outline-none focus:border-gray-400"
+                />
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    onClick={() => { setShowDeployModal(false); setDeployToken(""); }}
+                    className="px-4 py-2 text-sm text-gray-300 hover:text-white transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDeploy}
+                    disabled={isDeploying || !deployToken.trim()}
+                    className="px-4 py-2 bg-white text-black rounded-lg font-medium hover:bg-gray-100 transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isDeploying ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                        Deploying...
+                      </>
+                    ) : (
+                      <>
+                        <Globe className="w-3.5 h-3.5" />
+                        Deploy
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

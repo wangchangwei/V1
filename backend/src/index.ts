@@ -2,6 +2,7 @@ import express from "express";
 import { config } from "../config";
 import chatRoutes from "./routes/chat";
 import containerRoutes from "./routes/containers";
+import deployRoutes from "./routes/deploy";
 import { initModels } from "./services/models";
 import modelsRoutes from "./routes/models";
 import promptRoutes from "./routes/prompts";
@@ -35,6 +36,7 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 app.use("/containers", containerRoutes);
 app.use("/chat", chatRoutes);
+app.use("/deploy", deployRoutes);
 app.use("/models", modelsRoutes);
 app.use("/prompts", promptRoutes);
 
