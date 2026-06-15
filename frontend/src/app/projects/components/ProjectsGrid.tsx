@@ -1,6 +1,7 @@
 "use client";
 
 import { Calendar, FolderOpen, MoreHorizontal, Pencil, Play, Square, Trash2 } from "lucide-react";
+import toast from "react-hot-toast";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -122,6 +123,8 @@ export const ProjectsGrid = () => {
       setRenameTarget(null);
     } catch (error) {
       console.error("Failed to rename project:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to rename project");
+      setRenameTarget(null);
     } finally {
       setActionLoading(null);
     }
