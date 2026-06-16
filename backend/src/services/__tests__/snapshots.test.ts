@@ -38,15 +38,24 @@ afterEach(async () => {
 
 describe("captureSnapshot", () => {
   it("writes a tarball under data/snapshots/{containerId}/{messageId}.tar.gz", async () => {
+    const expectedTarball = path.join(TMP_ROOT, CID, `${MID}.tar.gz`);
     mockExec.mockImplementation(
       (cmd: string, cb: (e: null, stdout: string, stderr: string) => void) => {
-        process.nextTick(() => cb(null, "TAR-GZ-BYTES", ""));
+        // Model what the production createWriteStream would do: ensure the
+        // file exists by the time the exec callback fires.
+        process.nextTick(async () => {
+          try {
+            await fs.mkdir(path.dirname(expectedTarball), { recursive: true });
+            await fs.writeFile(expectedTarball, "");
+          } finally {
+            cb(null, "TAR-GZ-BYTES", "");
+          }
+        });
         return { stdout: { on: () => {} }, stderr: { on: () => {} } } as any;
       }
     );
     await captureSnapshot(CID, MID);
-    const tarballPath = path.join(TMP_ROOT, CID, `${MID}.tar.gz`);
-    const stat = await fs.stat(tarballPath);
+    const stat = await fs.stat(expectedTarball);
     expect(stat.isFile()).toBe(true);
   });
 
@@ -67,6 +76,7 @@ describe("captureSnapshot", () => {
 
 describe("restoreSnapshot", () => {
   it("round-trips: capture then restore returns the original files", async () => {
+    const expectedTarball = path.join(TMP_ROOT, CID, `${MID}.tar.gz`);
     mockExec.mockImplementation((cmd: string, cb: Function) => {
       if (cmd.includes("tar czf")) {
         const stdout = {
@@ -75,7 +85,17 @@ describe("restoreSnapshot", () => {
           },
         };
         const stderr = { on: () => {} };
-        process.nextTick(() => cb(null, "ok", ""));
+        // Model what the production createWriteStream would do: persist the
+        // emitted bytes to the tarball path so fs.access in restoreSnapshot
+        // succeeds.
+        process.nextTick(async () => {
+          try {
+            await fs.mkdir(path.dirname(expectedTarball), { recursive: true });
+            await fs.writeFile(expectedTarball, "FAKE-TAR-CONTENT");
+          } finally {
+            cb(null, "ok", "");
+          }
+        });
         return { stdout, stderr } as any;
       }
       if (cmd.includes("docker exec -i")) {
@@ -114,6 +134,21 @@ describe("listSnapshots / pruneSnapshots / deleteSnapshot", () => {
     await pruneSnapshots(CID, 2);
     const remaining = await listSnapshots(CID);
     expect(remaining.sort()).toEqual(["user-2", "user-3"]);
+  });
+
+  it("pruneSnapshots sorts by messageId lex order (non-sequential IDs)", async () => {
+    // Non-sequential IDs where lex order is the ONLY thing that produces
+    // the right answer (without sort, filesystem readdir order is unstable).
+    // keepLast=2 means we should drop the lex-smallest two and keep the
+    // lex-largest two: user-002, user-003, user-010 -> keep user-003, user-010.
+    await fs.mkdir(path.join(TMP_ROOT, CID), { recursive: true });
+    await fs.writeFile(path.join(TMP_ROOT, CID, "user-001.tar.gz"), "x");
+    await fs.writeFile(path.join(TMP_ROOT, CID, "user-002.tar.gz"), "x");
+    await fs.writeFile(path.join(TMP_ROOT, CID, "user-010.tar.gz"), "x");
+    await fs.writeFile(path.join(TMP_ROOT, CID, "user-003.tar.gz"), "x");
+    await pruneSnapshots(CID, 2);
+    const remaining = (await listSnapshots(CID)).sort();
+    expect(remaining).toEqual(["user-003", "user-010"]);
   });
 
   it("deleteSnapshot removes a single tarball", async () => {

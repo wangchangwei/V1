@@ -93,7 +93,7 @@ export async function pruneSnapshots(
   containerId: string,
   keepLast = 20
 ): Promise<void> {
-  const ids = await listSnapshots(containerId);
+  const ids = (await listSnapshots(containerId)).sort();
   if (ids.length <= keepLast) return;
   const toDelete = ids.slice(0, ids.length - keepLast);
   await Promise.all(toDelete.map((id) => deleteSnapshot(containerId, id)));
