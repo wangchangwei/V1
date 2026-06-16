@@ -36,25 +36,46 @@ afterEach(async () => {
   await fs.rm(TMP_ROOT, { recursive: true, force: true });
 });
 
+// Helper: build a captureSnapshot mock that simulates the real exec/stream
+// pipeline. The mock writes emitted stdout data to the tarball path so
+// restoreSnapshot's fs.access succeeds. Returns the mock implementation so
+// each test can override individual fields.
+function captureMockSuccess(opts: {
+  expectedTarball: string;
+  payload?: string;
+  delayWrite?: number;
+} = { expectedTarball: "" }) {
+  return (cmd: string, cb: (e: any, stdout: string, stderr: string) => void) => {
+    const stdout: any = {
+      on: (event: string, fn: (data: Buffer) => void) => {
+        if (event === "data" && opts.payload !== undefined) {
+          fn(Buffer.from(opts.payload));
+        }
+      },
+    };
+    const stderr = { on: () => {} };
+    process.nextTick(async () => {
+      try {
+        if (opts.payload !== undefined) {
+          await fs.mkdir(path.dirname(opts.expectedTarball), { recursive: true });
+          await fs.writeFile(opts.expectedTarball, opts.payload);
+        }
+      } finally {
+        cb(null, "ok", "");
+      }
+    });
+    return { stdout, stderr } as any;
+  };
+}
+
 describe("captureSnapshot", () => {
   it("writes a tarball under data/snapshots/{containerId}/{messageId}.tar.gz", async () => {
     const expectedTarball = path.join(TMP_ROOT, CID, `${MID}.tar.gz`);
     mockExec.mockImplementation(
-      (cmd: string, cb: (e: null, stdout: string, stderr: string) => void) => {
-        // Model what the production createWriteStream would do: ensure the
-        // file exists by the time the exec callback fires.
-        process.nextTick(async () => {
-          try {
-            await fs.mkdir(path.dirname(expectedTarball), { recursive: true });
-            await fs.writeFile(expectedTarball, "");
-          } finally {
-            cb(null, "TAR-GZ-BYTES", "");
-          }
-        });
-        return { stdout: { on: () => {} }, stderr: { on: () => {} } } as any;
-      }
+      captureMockSuccess({ expectedTarball, payload: "TAR-GZ-BYTES" })
     );
-    await captureSnapshot(CID, MID);
+    const ok = await captureSnapshot(CID, MID);
+    expect(ok).toBe(true);
     const stat = await fs.stat(expectedTarball);
     expect(stat.isFile()).toBe(true);
   });
@@ -66,11 +87,35 @@ describe("captureSnapshot", () => {
       process.nextTick(() => cb(null, "", ""));
       return {} as any;
     });
-    await captureSnapshot(CID, MID);
+    const ok = await captureSnapshot(CID, MID);
+    expect(ok).toBe(true);
     expect(capturedCmd).toMatch(/--exclude=node_modules/);
     expect(capturedCmd).toMatch(/--exclude=\.next/);
     expect(capturedCmd).toMatch(/--exclude=\.git/);
     expect(capturedCmd).toMatch(/--exclude=\.turbo/);
+  });
+
+  it("returns false when the underlying exec fails", async () => {
+    mockExec.mockImplementation((cmd: string, cb: Function) => {
+      process.nextTick(() => cb(new Error("docker daemon down"), "", ""));
+      return { stdout: { on: () => {} }, stderr: { on: () => {} } } as any;
+    });
+    const ok = await captureSnapshot(CID, MID);
+    expect(ok).toBe(false);
+  });
+
+  it("does not resolve until the write stream has finished flushing", async () => {
+    // After captureSnapshot resolves, the tarball MUST be readable. This
+    // proves the promise does not resolve before writer 'finish' fires.
+    const expectedTarball = path.join(TMP_ROOT, CID, `${MID}.tar.gz`);
+    mockExec.mockImplementation(
+      captureMockSuccess({ expectedTarball, payload: "FAKE-TAR-CONTENT" })
+    );
+    const ok = await captureSnapshot(CID, MID);
+    expect(ok).toBe(true);
+    // Immediately after resolve, bytes must be readable from disk.
+    const bytes = await fs.readFile(expectedTarball);
+    expect(bytes.toString()).toBe("FAKE-TAR-CONTENT");
   });
 });
 
@@ -79,24 +124,10 @@ describe("restoreSnapshot", () => {
     const expectedTarball = path.join(TMP_ROOT, CID, `${MID}.tar.gz`);
     mockExec.mockImplementation((cmd: string, cb: Function) => {
       if (cmd.includes("tar czf")) {
-        const stdout = {
-          on: (event: string, fn: (data: Buffer) => void) => {
-            if (event === "data") fn(Buffer.from("FAKE-TAR-CONTENT"));
-          },
-        };
-        const stderr = { on: () => {} };
-        // Model what the production createWriteStream would do: persist the
-        // emitted bytes to the tarball path so fs.access in restoreSnapshot
-        // succeeds.
-        process.nextTick(async () => {
-          try {
-            await fs.mkdir(path.dirname(expectedTarball), { recursive: true });
-            await fs.writeFile(expectedTarball, "FAKE-TAR-CONTENT");
-          } finally {
-            cb(null, "ok", "");
-          }
-        });
-        return { stdout, stderr } as any;
+        return captureMockSuccess({ expectedTarball, payload: "FAKE-TAR-CONTENT" })(
+          cmd,
+          cb
+        );
       }
       if (cmd.includes("docker exec -i")) {
         const stdinChunks: Buffer[] = [];
@@ -112,7 +143,8 @@ describe("restoreSnapshot", () => {
       }
       return {} as any;
     });
-    await captureSnapshot(CID, MID);
+    const ok = await captureSnapshot(CID, MID);
+    expect(ok).toBe(true);
     await restoreSnapshot(CID, MID);
   });
 });

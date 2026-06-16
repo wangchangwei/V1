@@ -9,9 +9,16 @@
 // On restore: cat {tarball} | docker exec -i {cid} tar xzf - -C /app
 //             pipes the file back into the container.
 //
-// All operations are best-effort: capture failures are logged but
-// do not throw to the caller (degraded mode — message.snapshotId stays
-// undefined; edit later returns 410 snapshot_gone).
+// captureSnapshot returns Promise<boolean> — true on success, false on any
+// failure (exec error, writer error, missing tarball dir). The caller MUST
+// only set message.snapshotId when captureSnapshot resolves true; otherwise
+// the message must keep snapshotId undefined so a later edit-and-regenerate
+// returns 410 snapshot_gone.
+//
+// captureSnapshot also guarantees that on a true return the tarball bytes
+// have been flushed to disk — the promise resolves only after the write
+// stream emits 'finish' (or 'close' on error). This prevents a racing
+// restoreSnapshot from observing a partial or missing tarball.
 
 import { exec } from "node:child_process";
 import { promises as fs, createWriteStream } from "fs";
@@ -36,23 +43,47 @@ function dirForContainer(containerId: string): string {
 export async function captureSnapshot(
   containerId: string,
   messageId: string
-): Promise<void> {
-  await fs.mkdir(dirForContainer(containerId), { recursive: true });
+): Promise<boolean> {
+  try {
+    await fs.mkdir(dirForContainer(containerId), { recursive: true });
+  } catch (err: any) {
+    console.warn(`[snapshots] mkdir failed for ${containerId}/${messageId}:`, err?.message);
+    return false;
+  }
   const out = tarballPath(containerId, messageId);
   const cmd = `docker exec ${containerId} tar czf - ${EXCLUDES.join(" ")} -C /app .`;
-  await new Promise<void>((resolve) => {
+
+  return new Promise<boolean>((resolve) => {
+    let execFailed = false;
+    let writerFailed = false;
+    let resolved = false;
+    const finish = (ok: boolean) => {
+      if (resolved) return;
+      resolved = true;
+      resolve(ok);
+    };
     const writer = createWriteStream(out);
     const child = exec(cmd, (err) => {
       if (err) {
+        execFailed = true;
         console.warn(`[snapshots] capture failed for ${containerId}/${messageId}:`, err.message);
       }
       writer.end();
-      resolve();  // never throw — degraded mode
+    });
+    writer.on("finish", () => finish(!execFailed && !writerFailed));
+    writer.on("error", (e) => {
+      writerFailed = true;
+      console.warn(`[snapshots] writer error for ${containerId}/${messageId}:`, e.message);
+      finish(false);
+    });
+    writer.on("close", () => {
+      // Belt-and-suspenders: if 'finish' didn't fire (rare on some streams)
+      // resolve here so the promise never hangs.
+      finish(!execFailed && !writerFailed);
     });
     const stdout: any = child.stdout;
     if (stdout && typeof stdout.on === "function") {
       stdout.on("data", (chunk: Buffer) => writer.write(chunk));
-      stdout.on("end", () => writer.end());
       stdout.on("error", () => writer.end());
     }
   });
