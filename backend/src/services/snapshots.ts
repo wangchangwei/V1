@@ -96,6 +96,17 @@ export async function restoreSnapshot(
   const tarball = tarballPath(containerId, messageId);
   // Existence check; throws so caller can handle 410.
   await fs.access(tarball);
+  // Guard against zero-byte / truncated tarballs. A real snapshot of even an
+  // empty /app is several KB after gzip; anything smaller indicates a crashed
+  // capture, partial write, or storage corruption. Treat as missing so the
+  // PATCH handler returns 410 snapshot_gone.
+  const stat = await fs.stat(tarball);
+  if (stat.size < 1024) {
+    throw Object.assign(
+      new Error(`ENOENT: tarball too small (${stat.size} bytes)`),
+      { code: "ENOENT" }
+    );
+  }
   const bytes = await fs.readFile(tarball);
   const cmd = `docker exec -i ${containerId} tar xzf - -C /app`;
   return new Promise((resolve, reject) => {

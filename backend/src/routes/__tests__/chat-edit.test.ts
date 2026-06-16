@@ -159,6 +159,24 @@ describe("PATCH /chat/:containerId/messages/:messageId", () => {
       .expect(410);
   });
 
+  it("returns 410 when snapshot tarball exists but is empty (corrupt)", async () => {
+    await seedSession();
+    // Make restoreSnapshot actually fail by writing an empty file in the snapshot dir
+    // OR by mocking it to reject — the latter is simpler
+    mocks.restoreSnapshot.mockRejectedValue(
+      Object.assign(new Error("ENOENT: tarball too small"), {
+        code: "ENOENT",
+      })
+    );
+    mocks.sendMessageStream.mockImplementation(async function* () {
+      yield { type: "done", data: {} };
+    });
+    await request(app)
+      .patch(`/chat/${CID}/messages/${MID}`)
+      .send({ content: "new" })
+      .expect(410);
+  });
+
   it("returns 500 and does NOT truncate session when restore fails", async () => {
     const session = await seedSession();
     const originalLength = session.messages.length;

@@ -122,12 +122,11 @@ describe("captureSnapshot", () => {
 describe("restoreSnapshot", () => {
   it("round-trips: capture then restore returns the original files", async () => {
     const expectedTarball = path.join(TMP_ROOT, CID, `${MID}.tar.gz`);
+    // Payload must be >= 1024 bytes to pass restoreSnapshot's size guard.
+    const payload = "FAKE-TAR-CONTENT" + "x".repeat(1024);
     mockExec.mockImplementation((cmd: string, cb: Function) => {
       if (cmd.includes("tar czf")) {
-        return captureMockSuccess({ expectedTarball, payload: "FAKE-TAR-CONTENT" })(
-          cmd,
-          cb
-        );
+        return captureMockSuccess({ expectedTarball, payload })(cmd, cb);
       }
       if (cmd.includes("docker exec -i")) {
         const stdinChunks: Buffer[] = [];
@@ -136,7 +135,7 @@ describe("restoreSnapshot", () => {
           end: () => {},
         };
         process.nextTick(() => {
-          expect(Buffer.concat(stdinChunks).toString()).toBe("FAKE-TAR-CONTENT");
+          expect(Buffer.concat(stdinChunks).toString()).toBe(payload);
           cb(null, "", "");
         });
         return { stdin } as any;
@@ -146,6 +145,23 @@ describe("restoreSnapshot", () => {
     const ok = await captureSnapshot(CID, MID);
     expect(ok).toBe(true);
     await restoreSnapshot(CID, MID);
+  });
+
+  it("restoreSnapshot throws when tarball exists but is empty/too small", async () => {
+    await fs.mkdir(path.join(TMP_ROOT, CID), { recursive: true });
+    // Write a 0-byte file (simulating crashed capture)
+    await fs.writeFile(path.join(TMP_ROOT, CID, `${MID}.tar.gz`), "");
+
+    // The mock exec should NOT be called for an empty tarball
+    let execCalled = false;
+    mockExec.mockImplementation((cmd: string, cb: Function) => {
+      execCalled = true;
+      process.nextTick(() => cb(null, "", ""));
+      return {} as any;
+    });
+
+    await expect(restoreSnapshot(CID, MID)).rejects.toThrow();
+    expect(execCalled).toBe(false);
   });
 });
 
