@@ -136,19 +136,43 @@ describe("listSnapshots / pruneSnapshots / deleteSnapshot", () => {
     expect(remaining.sort()).toEqual(["user-2", "user-3"]);
   });
 
-  it("pruneSnapshots sorts by messageId lex order (non-sequential IDs)", async () => {
-    // Non-sequential IDs where lex order is the ONLY thing that produces
-    // the right answer (without sort, filesystem readdir order is unstable).
-    // keepLast=2 means we should drop the lex-smallest two and keep the
-    // lex-largest two: user-002, user-003, user-010 -> keep user-003, user-010.
+  it("pruneSnapshots sorts by messageId lex order (adversarial data)", async () => {
+    // Adversarial test for the unsorted-prune bug.
+    //
+    // On most modern filesystems (macOS APFS, ext4, tmpfs) readdir already
+    // returns lex-sorted order, so a naive test using on-disk file order
+    // can't catch a missing .sort(). To make the test fail when .sort() is
+    // absent, we stub fs.readdir to return a deliberately non-sorted list,
+    // simulating the worst-case ordering on any platform.
+    //
+    // Without .sort(): pruneSnapshots sees ["user-100", "user-002", "user-003", "user-004"],
+    //   drops the first 2 → keeps ["user-003", "user-004"]
+    //   (wrong — user-100 should be one of the two kept).
+    //
+    // With .sort(): pruneSnapshots sorts to ["user-002", "user-003", "user-004", "user-100"],
+    //   drops the first 2 → keeps ["user-004", "user-100"]
+    //   (correct — lex-largest two preserved).
     await fs.mkdir(path.join(TMP_ROOT, CID), { recursive: true });
-    await fs.writeFile(path.join(TMP_ROOT, CID, "user-001.tar.gz"), "x");
-    await fs.writeFile(path.join(TMP_ROOT, CID, "user-002.tar.gz"), "x");
-    await fs.writeFile(path.join(TMP_ROOT, CID, "user-010.tar.gz"), "x");
-    await fs.writeFile(path.join(TMP_ROOT, CID, "user-003.tar.gz"), "x");
-    await pruneSnapshots(CID, 2);
+    for (const id of ["user-100", "user-002", "user-003", "user-004"]) {
+      await fs.writeFile(path.join(TMP_ROOT, CID, `${id}.tar.gz`), "x");
+    }
+
+    const readdirSpy = vi.spyOn(fs, "readdir").mockResolvedValue([
+      "user-100.tar.gz",
+      "user-002.tar.gz",
+      "user-003.tar.gz",
+      "user-004.tar.gz",
+    ] as any);
+
+    try {
+      await pruneSnapshots(CID, 2);
+    } finally {
+      readdirSpy.mockRestore();
+    }
+    // After restore, listSnapshots reads the real disk (which now has only
+    // the kept files because pruneSnapshots called fs.unlink on the others).
     const remaining = (await listSnapshots(CID)).sort();
-    expect(remaining).toEqual(["user-003", "user-010"]);
+    expect(remaining).toEqual(["user-004", "user-100"]);
   });
 
   it("deleteSnapshot removes a single tarball", async () => {
