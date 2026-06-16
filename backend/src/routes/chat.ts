@@ -77,20 +77,28 @@ router.post("/:containerId/messages", async (req, res) => {
     console.error("[Chat error] stack:", err.stack);
     if (stream) {
       if ((res as any).__keepalive) clearInterval((res as any).__keepalive);
-      res.write(
-        `data: ${JSON.stringify({
-          type: "error",
-          data: {
-            error: err.message,
-          },
-        })}\n\n`
-      );
-      res.end();
+      if (!res.writableEnded) {
+        try {
+          res.write(
+            `data: ${JSON.stringify({
+              type: "error",
+              data: {
+                error: err.message,
+              },
+            })}\n\n`
+          );
+          res.end();
+        } catch (_) {
+          // client disconnected; nothing more to write
+        }
+      }
     } else {
-      res.status(500).json({
-        success: false,
-        error: err.message,
-      });
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          error: err.message,
+        });
+      }
     }
   }
 });

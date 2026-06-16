@@ -27,12 +27,19 @@ export async function withProjectLock<T>(
   const next = previous.then(() => gate);
   // Swallow rejections from previous so a single failure doesn't poison
   // the queue for subsequent waiters.
-  projectQueues.set(projectId, next.catch(() => {}));
+  const stored = next.catch(() => {});
+  projectQueues.set(projectId, stored);
 
   await previous;
   try {
     return await fn();
   } finally {
     release!();
+    // Drop the map entry if no later waiter has appended to it.
+    queueMicrotask(() => {
+      if (projectQueues.get(projectId) === stored) {
+        projectQueues.delete(projectId);
+      }
+    });
   }
 }

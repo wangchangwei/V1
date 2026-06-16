@@ -301,6 +301,8 @@ export async function* sendMessageStream(
   if (captureOk) {
     userMsg.snapshotId = userMsg.id;
   }
+  // pruneSnapshots sorts by messageId lex, which equals time-order
+  // only because messageIds use Date.now() — see services/snapshots.ts.
   await pruneSnapshots(containerId, 20);
 
   const messages = sessionToOpenAIMessages(session);
