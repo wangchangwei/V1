@@ -49,6 +49,7 @@ interface ChatMessageProps {
   formatMessageContent?: (content: string) => React.ReactNode[];
   containerId?: string;
   isStreaming?: boolean;
+  isRegenerating?: boolean;
   onEdit?: (newContent: string) => void;
 }
 
@@ -272,7 +273,7 @@ const formatFileSize = (bytes: number) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 };
 
-export const ChatMessage: React.FC<ChatMessageProps> = ({ message, formatMessageContent, onEdit }) => {
+export const ChatMessage: React.FC<ChatMessageProps> = ({ message, formatMessageContent, isRegenerating, onEdit }) => {
   const toolCalls = message.toolCalls ?? [];
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
@@ -353,7 +354,8 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, formatMessage
                     autoFocus
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
-                    className="w-full rounded border border-gray-600 bg-gray-800 p-2 text-sm text-white"
+                    disabled={isRegenerating}
+                    className="w-full rounded border border-gray-600 bg-gray-800 p-2 text-sm text-white disabled:opacity-60"
                     rows={Math.max(2, draft.split("\n").length)}
                   />
                   <div className="flex gap-2 justify-end">
@@ -363,7 +365,8 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, formatMessage
                         setIsEditing(false);
                         setDraft(message.content);
                       }}
-                      className="rounded bg-gray-700 px-3 py-1 text-sm text-white hover:bg-gray-600"
+                      disabled={isRegenerating}
+                      className="rounded bg-gray-700 px-3 py-1 text-sm text-white hover:bg-gray-600 disabled:opacity-60 disabled:hover:bg-gray-700"
                     >
                       <X size={14} className="inline" /> Cancel
                     </button>
@@ -373,16 +376,22 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, formatMessage
                         setIsEditing(false);
                         onEdit?.(draft);
                       }}
-                      className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500"
+                      disabled={isRegenerating}
+                      className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500 disabled:opacity-60 disabled:hover:bg-blue-600 flex items-center gap-1"
                     >
-                      <Check size={14} className="inline" /> Save
+                      {isRegenerating ? (
+                        <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <Check size={14} />
+                      )}
+                      Regenerating...
                     </button>
                   </div>
                 </div>
               ) : (
                 <>
                   <div className="whitespace-pre-wrap">{message.content}</div>
-                  {onEdit && (
+                  {onEdit && !isRegenerating && (
                     <button
                       type="button"
                       aria-label="Edit message"

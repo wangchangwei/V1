@@ -79,7 +79,16 @@ export const WorkspaceDashboard = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const streamCancelRef = useRef<(() => void) | null>(null);
+  const editCancelRef = useRef<(() => void) | null>(null);
+  const [isRegenerating, setIsRegenerating] = useState<boolean>(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
+
+  // Cancel any in-flight edit stream on unmount.
+  useEffect(() => {
+    return () => {
+      editCancelRef.current?.();
+    };
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -343,44 +352,57 @@ export const WorkspaceDashboard = ({
 
   const handleEditMessage = useCallback(
     (messageId: string, newContent: string) => {
-      patchChatMessageStream(
-        containerId,
-        messageId,
-        newContent,
-        (data) => {
-          if (data.type === "user") {
-            setMessages((prev) => [...prev, data.data]);
-          } else if (data.type === "tool_call" || data.type === "tool_result") {
-            // no-op
-          } else if (data.type === "assistant") {
-            setStreamingMessageId(data.data.id);
-            setMessages((prev) => {
-              const newMessages = [...prev];
-              const existingIndex = newMessages.findIndex(
-                (msg) => msg.id === data.data.id
-              );
-              if (existingIndex >= 0) {
-                newMessages[existingIndex] = data.data;
-              } else {
-                newMessages.push(data.data);
-              }
-              return newMessages;
-            });
-          } else if (data.type === "done") {
+      if (isRegenerating) return;
+      editCancelRef.current?.();
+      setIsRegenerating(true);
+      try {
+        editCancelRef.current = patchChatMessageStream(
+          containerId,
+          messageId,
+          newContent,
+          (data) => {
+            if (data.type === "user") {
+              setMessages((prev) => [...prev, data.data]);
+            } else if (data.type === "tool_call" || data.type === "tool_result") {
+              // no-op
+            } else if (data.type === "assistant") {
+              setStreamingMessageId(data.data.id);
+              setMessages((prev) => {
+                const newMessages = [...prev];
+                const existingIndex = newMessages.findIndex(
+                  (msg) => msg.id === data.data.id
+                );
+                if (existingIndex >= 0) {
+                  newMessages[existingIndex] = data.data;
+                } else {
+                  newMessages.push(data.data);
+                }
+                return newMessages;
+              });
+            } else if (data.type === "done") {
+              setStreamingMessageId(null);
+            }
+          },
+          (error) => {
+            toast.error(error);
             setStreamingMessageId(null);
+            setIsRegenerating(false);
+            editCancelRef.current = null;
+          },
+          () => {
+            setStreamingMessageId(null);
+            toast.success("Regenerated from edit");
+            setIsRegenerating(false);
+            editCancelRef.current = null;
           }
-        },
-        (error) => {
-          toast.error(error);
-          setStreamingMessageId(null);
-        },
-        () => {
-          setStreamingMessageId(null);
-          toast.success("Regenerated from edit");
-        }
-      );
+        );
+      } catch (error) {
+        console.error("Edit stream failed to start:", error);
+        setIsRegenerating(false);
+        editCancelRef.current = null;
+      }
     },
-    [containerId, setMessages, setStreamingMessageId, toast]
+    [containerId, isRegenerating, setMessages, setStreamingMessageId, toast]
   );
 
   const handleTextareaKeyDown = (
@@ -847,6 +869,7 @@ export const WorkspaceDashboard = ({
                       formatMessageContent={formatMessageContent}
                       containerId={containerId}
                       isStreaming={streamingMessageId === message.id}
+                      isRegenerating={isRegenerating}
                       onEdit={
                         message.role === "user"
                           ? (newContent) => handleEditMessage(message.id, newContent)
