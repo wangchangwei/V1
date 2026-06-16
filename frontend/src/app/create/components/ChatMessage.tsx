@@ -1,4 +1,5 @@
 import {
+  Check,
   CheckCircle,
   ChevronDown,
   ChevronRight,
@@ -8,8 +9,10 @@ import {
   FolderOpen,
   Image,
   Package,
+  Pencil,
   Trash2,
   Wrench,
+  X,
   XCircle,
 } from "lucide-react";
 import React, { useState } from "react";
@@ -46,6 +49,7 @@ interface ChatMessageProps {
   formatMessageContent?: (content: string) => React.ReactNode[];
   containerId?: string;
   isStreaming?: boolean;
+  onEdit?: (newContent: string) => void;
 }
 
 const TOOL_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -268,8 +272,10 @@ const formatFileSize = (bytes: number) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 };
 
-export const ChatMessage: React.FC<ChatMessageProps> = ({ message, formatMessageContent }) => {
+export const ChatMessage: React.FC<ChatMessageProps> = ({ message, formatMessageContent, onEdit }) => {
   const toolCalls = message.toolCalls ?? [];
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(message.content);
 
   return (
     <div
@@ -339,7 +345,59 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, formatMessage
           )}
 
           {message.role === "user" ? (
-            <div className="whitespace-pre-wrap">{message.content}</div>
+            <div className="group relative">
+              {isEditing ? (
+                <div className="flex flex-col gap-2">
+                  <textarea
+                    aria-label="Edit message"
+                    autoFocus
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    className="w-full rounded border border-gray-600 bg-gray-800 p-2 text-sm text-white"
+                    rows={Math.max(2, draft.split("\n").length)}
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEditing(false);
+                        setDraft(message.content);
+                      }}
+                      className="rounded bg-gray-700 px-3 py-1 text-sm text-white hover:bg-gray-600"
+                    >
+                      <X size={14} className="inline" /> Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEditing(false);
+                        onEdit?.(draft);
+                      }}
+                      className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500"
+                    >
+                      <Check size={14} className="inline" /> Save
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="whitespace-pre-wrap">{message.content}</div>
+                  {onEdit && (
+                    <button
+                      type="button"
+                      aria-label="Edit message"
+                      onClick={() => {
+                        setDraft(message.content);
+                        setIsEditing(true);
+                      }}
+                      className="absolute -right-2 -top-2 hidden rounded bg-gray-700 p-1 text-white opacity-0 transition-opacity group-hover:block group-hover:opacity-100 hover:bg-gray-600"
+                    >
+                      <Pencil size={12} />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
           ) : (
             <div className="space-y-2">
               {toolCalls.length > 0 && (

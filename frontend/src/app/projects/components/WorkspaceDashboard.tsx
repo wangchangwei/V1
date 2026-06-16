@@ -17,13 +17,14 @@ import {
   Upload,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE_URL } from "@/lib/backend/api";
 import { toast } from "react-hot-toast";
 import {
   deployToVercel,
   getChatHistory,
   Message,
+  patchChatMessageStream,
   sendChatMessage,
   sendChatMessageStream,
 } from "../../../lib/backend/api";
@@ -339,6 +340,48 @@ export const WorkspaceDashboard = ({
 
     streamCancelRef.current = cancel;
   };
+
+  const handleEditMessage = useCallback(
+    (messageId: string, newContent: string) => {
+      patchChatMessageStream(
+        containerId,
+        messageId,
+        newContent,
+        (data) => {
+          if (data.type === "user") {
+            setMessages((prev) => [...prev, data.data]);
+          } else if (data.type === "tool_call" || data.type === "tool_result") {
+            // no-op
+          } else if (data.type === "assistant") {
+            setStreamingMessageId(data.data.id);
+            setMessages((prev) => {
+              const newMessages = [...prev];
+              const existingIndex = newMessages.findIndex(
+                (msg) => msg.id === data.data.id
+              );
+              if (existingIndex >= 0) {
+                newMessages[existingIndex] = data.data;
+              } else {
+                newMessages.push(data.data);
+              }
+              return newMessages;
+            });
+          } else if (data.type === "done") {
+            setStreamingMessageId(null);
+          }
+        },
+        (error) => {
+          toast.error(error);
+          setStreamingMessageId(null);
+        },
+        () => {
+          setStreamingMessageId(null);
+          toast.success("Regenerated from edit");
+        }
+      );
+    },
+    [containerId, setMessages, setStreamingMessageId, toast]
+  );
 
   const handleTextareaKeyDown = (
     e: React.KeyboardEvent<HTMLTextAreaElement>
@@ -804,6 +847,11 @@ export const WorkspaceDashboard = ({
                       formatMessageContent={formatMessageContent}
                       containerId={containerId}
                       isStreaming={streamingMessageId === message.id}
+                      onEdit={
+                        message.role === "user"
+                          ? (newContent) => handleEditMessage(message.id, newContent)
+                          : undefined
+                      }
                     />
                   ))}
                   {isLoading && !streamingMessageId && (
