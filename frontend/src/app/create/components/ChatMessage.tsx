@@ -280,6 +280,8 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, formatMessage
 
   return (
     <div
+      data-testid="chat-message"
+      data-role={message.role}
       className={`flex flex-col ${
         message.role === "user" ? "items-end" : "items-start"
       }`}
