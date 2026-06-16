@@ -39,7 +39,9 @@ export interface ChatSession {
   updatedAt: string;
 }
 
-const chatSessions = new Map<string, ChatSession>();
+// Exported for test isolation only; production code should use
+// getOrCreateChatSession / getChatSession / createChatSession.
+export const chatSessions = new Map<string, ChatSession>();
 
 // AI_BASE_URL may or may not include a version segment (e.g. "/v1").
 // The OpenAI SDK appends "/chat/completions" to baseURL, so the base must

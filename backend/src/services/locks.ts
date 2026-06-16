@@ -43,3 +43,10 @@ export async function withProjectLock<T>(
     });
   }
 }
+
+// Test-only: clear all per-project lock state. Production code never
+// calls this. Used to ensure tests don't leak lock queue state between
+// cases.
+export function __resetLocksForTests(): void {
+  projectQueues.clear();
+}
