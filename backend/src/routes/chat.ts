@@ -1,6 +1,7 @@
 import express from "express";
 import * as llmService from "../services/llm";
 import { isSupportedModel } from "../services/models";
+import { withProjectLock } from "../services/locks";
 
 const router = express.Router();
 
@@ -24,50 +25,52 @@ router.post("/:containerId/messages", async (req, res) => {
   }
 
   try {
-    if (stream) {
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.setHeader("Access-Control-Allow-Origin", "*");
+    await withProjectLock(containerId, async () => {
+      if (stream) {
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.setHeader("Access-Control-Allow-Origin", "*");
 
-      const messageStream = llmService.sendMessageStream(
-        containerId,
-        message,
-        attachments,
-        model
-      );
+        const messageStream = llmService.sendMessageStream(
+          containerId,
+          message,
+          attachments,
+          model
+        );
 
-      const keepalive = setInterval(() => {
+        const keepalive = setInterval(() => {
+          try {
+            res.write(": keepalive\n\n");
+          } catch (_) {}
+        }, 15000);
+        (res as any).__keepalive = keepalive;
+
         try {
-          res.write(": keepalive\n\n");
-        } catch (_) {}
-      }, 15000);
-      (res as any).__keepalive = keepalive;
-
-      try {
-        for await (const chunk of messageStream) {
-          res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+          for await (const chunk of messageStream) {
+            res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+          }
+        } finally {
+          clearInterval(keepalive);
         }
-      } finally {
-        clearInterval(keepalive);
+
+        res.write("data: [DONE]\n\n");
+        res.end();
+      } else {
+        const { userMessage, assistantMessage } = await llmService.sendMessage(
+          containerId,
+          message,
+          attachments,
+          model
+        );
+
+        res.json({
+          success: true,
+          userMessage,
+          assistantMessage,
+        });
       }
-
-      res.write("data: [DONE]\n\n");
-      res.end();
-    } else {
-      const { userMessage, assistantMessage } = await llmService.sendMessage(
-        containerId,
-        message,
-        attachments,
-        model
-      );
-
-      res.json({
-        success: true,
-        userMessage,
-        assistantMessage,
-      });
-    }
+    });
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
     console.error("[Chat error] message:", err.message);
