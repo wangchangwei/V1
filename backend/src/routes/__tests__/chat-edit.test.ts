@@ -44,11 +44,11 @@ beforeEach(() => {
   mocks.sendMessageStream.mockReset();
   __resetLocksForTests();
   // Clear the in-memory chat sessions map
-  (llmService as any).chatSessions?.clear?.();
+  llmService.chatSessions.clear();
 });
 
 afterEach(() => {
-  (llmService as any).chatSessions?.clear?.();
+  llmService.chatSessions.clear();
 });
 
 const CID = "cid-1";

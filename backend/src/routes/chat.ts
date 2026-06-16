@@ -163,7 +163,8 @@ router.patch("/:containerId/messages/:messageId", async (req, res) => {
         if (isMissing) {
           res.status(410).json({ success: false, error: "snapshot_gone" });
         } else {
-          res.status(500).json({ success: false, error: "restore_failed", detail: errMsg });
+          console.error("[Chat PATCH] restore failed for", containerId, "snapshotId:", target.snapshotId, "error:", errMsg);
+          res.status(500).json({ success: false, error: "restore_failed" });
         }
         return;  // abort: do NOT truncate session
       }
@@ -196,8 +197,19 @@ router.patch("/:containerId/messages/:messageId", async (req, res) => {
       res.end();
     });
   } catch (error) {
-    if (res.headersSent) return;  // already streaming; abort silently
     const err = error instanceof Error ? error : new Error(String(error));
+    console.error("[Chat PATCH error] message:", err.message);
+    console.error("[Chat PATCH error] stack:", err.stack);
+    if ((res as any).__keepalive) clearInterval((res as any).__keepalive);
+    if (res.headersSent) {
+      if (!res.writableEnded) {
+        try {
+          res.write(`data: ${JSON.stringify({ type: "error", data: { error: err.message } })}\n\n`);
+          res.end();
+        } catch (_) { /* client gone */ }
+      }
+      return;
+    }
     res.status(500).json({ success: false, error: err.message });
   }
 });
