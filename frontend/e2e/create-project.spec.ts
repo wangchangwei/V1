@@ -7,8 +7,8 @@ test.describe("Create Project from Prompt", () => {
     // 1. Go to homepage
     await page.goto(BASE_URL);
 
-    // 2. Wait for model dropdown to load with MiniMax models
-    const modelDropdown = page.getByRole("button").filter({ hasText: /MiniMax/ });
+    // 2. Wait for model dropdown to be present (model-agnostic — any model catalog)
+    const modelDropdown = page.getByRole("button", { name: "Choose model" });
     await expect(modelDropdown).toBeVisible({ timeout: 10000 });
 
     // 3. Type prompt into the textarea

@@ -387,3 +387,90 @@ export function sendChatMessageStream(
     abortController.abort();
   };
 }
+
+export function patchChatMessageStream(
+  containerId: string,
+  messageId: string,
+  newContent: string,
+  onMessage: (data: any) => void,
+  onError?: (error: string) => void,
+  onComplete?: () => void
+): () => void {
+  let abortController = new AbortController();
+
+  fetch(`${API_BASE_URL}/chat/${containerId}/messages/${messageId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content: newContent }),
+    signal: abortController.signal,
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        if (response.status === 410) {
+          onError?.("Cannot undo past 20 messages — snapshot was pruned.");
+        } else if (response.status === 404) {
+          onError?.("Message not found.");
+        } else if (response.status === 400) {
+          onError?.("Cannot edit this message.");
+        } else {
+          onError?.(`Edit failed (${response.status})`);
+        }
+        onComplete?.();
+        return;
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No reader available");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const data = line.slice(6).trim();
+              if (data === "[DONE]") {
+                onComplete?.();
+                return;
+              }
+              if (data) {
+                try {
+                  const parsed = JSON.parse(data);
+                  if (parsed.type === "error") {
+                    onError?.(parsed.data?.error || "Unknown error");
+                    onComplete?.();
+                    return;
+                  }
+                  onMessage(parsed);
+                } catch (e) {
+                  console.error("Failed to parse SSE data:", data, e);
+                }
+              }
+            }
+          }
+        }
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          return;
+        }
+        throw error;
+      }
+    })
+    .catch((error) => {
+      if (error instanceof Error && error.name === "AbortError") {
+        return;
+      }
+      onError?.(error.message || "Network error");
+      onComplete?.();
+    });
+
+  return () => abortController.abort();
+}

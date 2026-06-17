@@ -9,6 +9,7 @@ import {
   Globe,
   Home,
   Layers,
+  Settings,
   Menu,
   Monitor,
   RefreshCw,
@@ -17,13 +18,15 @@ import {
   Upload,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE_URL } from "@/lib/backend/api";
 import { toast } from "react-hot-toast";
 import {
   deployToVercel,
   getChatHistory,
   Message,
+  patchChatMessageStream,
   sendChatMessage,
   sendChatMessageStream,
 } from "../../../lib/backend/api";
@@ -40,6 +43,7 @@ interface WorkspaceDashboardProps {
 export const WorkspaceDashboard = ({
   containerId,
 }: WorkspaceDashboardProps) => {
+  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState<string>("");
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
@@ -78,7 +82,16 @@ export const WorkspaceDashboard = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const streamCancelRef = useRef<(() => void) | null>(null);
+  const editCancelRef = useRef<(() => void) | null>(null);
+  const [isRegenerating, setIsRegenerating] = useState<boolean>(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
+
+  // Cancel any in-flight edit stream on unmount.
+  useEffect(() => {
+    return () => {
+      editCancelRef.current?.();
+    };
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -339,6 +352,61 @@ export const WorkspaceDashboard = ({
 
     streamCancelRef.current = cancel;
   };
+
+  const handleEditMessage = useCallback(
+    (messageId: string, newContent: string) => {
+      if (isRegenerating) return;
+      editCancelRef.current?.();
+      setIsRegenerating(true);
+      try {
+        editCancelRef.current = patchChatMessageStream(
+          containerId,
+          messageId,
+          newContent,
+          (data) => {
+            if (data.type === "user") {
+              setMessages((prev) => [...prev, data.data]);
+            } else if (data.type === "tool_call" || data.type === "tool_result") {
+              // no-op
+            } else if (data.type === "assistant") {
+              setStreamingMessageId(data.data.id);
+              setMessages((prev) => {
+                const newMessages = [...prev];
+                const existingIndex = newMessages.findIndex(
+                  (msg) => msg.id === data.data.id
+                );
+                if (existingIndex >= 0) {
+                  newMessages[existingIndex] = data.data;
+                } else {
+                  newMessages.push(data.data);
+                }
+                return newMessages;
+              });
+            } else if (data.type === "done") {
+              setStreamingMessageId(null);
+            }
+          },
+          (error) => {
+            toast.error(error);
+            setStreamingMessageId(null);
+            setIsRegenerating(false);
+            editCancelRef.current = null;
+          },
+          () => {
+            setStreamingMessageId(null);
+            toast.success("Regenerated from edit");
+            setIsRegenerating(false);
+            editCancelRef.current = null;
+          }
+        );
+      } catch (error) {
+        console.error("Edit stream failed to start:", error);
+        setIsRegenerating(false);
+        editCancelRef.current = null;
+      }
+    },
+    [containerId, isRegenerating, setMessages, setStreamingMessageId, toast]
+  );
 
   const handleTextareaKeyDown = (
     e: React.KeyboardEvent<HTMLTextAreaElement>
@@ -726,6 +794,15 @@ export const WorkspaceDashboard = ({
               <ExternalLink className="w-3.5 h-3.5" />
             </button>
 
+            <button
+              onClick={() => router.push(`/projects/${containerId}/settings`)}
+              className="p-1.5 text-white/60 hover:text-white hover:bg-white/5 rounded-md transition-all backdrop-blur-sm"
+              title="Project settings"
+              data-testid="open-settings-gear"
+            >
+              <Settings className="w-3.5 h-3.5" />
+            </button>
+
             <div className="h-4 w-px bg-gray-700/40 mx-1" />
 
             <button
@@ -804,6 +881,12 @@ export const WorkspaceDashboard = ({
                       formatMessageContent={formatMessageContent}
                       containerId={containerId}
                       isStreaming={streamingMessageId === message.id}
+                      isRegenerating={isRegenerating}
+                      onEdit={
+                        message.role === "user"
+                          ? (newContent) => handleEditMessage(message.id, newContent)
+                          : undefined
+                      }
                     />
                   ))}
                   {isLoading && !streamingMessageId && (

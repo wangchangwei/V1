@@ -3,6 +3,7 @@ import type { ChatCompletionMessageParam } from "openai/resources/chat";
 import { config } from "../../config";
 import prompt from "../utils/prompt.txt";
 import { TOOL_DEFINITIONS, executeTool } from "./tools";
+import { captureSnapshot, pruneSnapshots } from "./snapshots";
 
 export interface Message {
   id: string;
@@ -11,6 +12,7 @@ export interface Message {
   timestamp: string;
   attachments?: Attachment[];
   toolCalls?: ToolCallRecord[];
+  snapshotId?: string;  // set after captureSnapshot returns true
 }
 
 export interface Attachment {
@@ -37,7 +39,9 @@ export interface ChatSession {
   updatedAt: string;
 }
 
-const chatSessions = new Map<string, ChatSession>();
+// Exported for test isolation only; production code should use
+// getOrCreateChatSession / getChatSession / createChatSession.
+export const chatSessions = new Map<string, ChatSession>();
 
 // AI_BASE_URL may or may not include a version segment (e.g. "/v1").
 // The OpenAI SDK appends "/chat/completions" to baseURL, so the base must
@@ -291,6 +295,17 @@ export async function* sendMessageStream(
   };
   session.messages.push(userMsg);
   yield { type: "user", data: userMsg };
+
+  // Capture filesystem snapshot BEFORE the AI starts mutating files.
+  // Best-effort: only set snapshotId on success so the message is
+  // not marked as regenerable when no snapshot exists.
+  const captureOk = await captureSnapshot(containerId, userMsg.id);
+  if (captureOk) {
+    userMsg.snapshotId = userMsg.id;
+  }
+  // pruneSnapshots sorts by messageId lex, which equals time-order
+  // only because messageIds use Date.now() — see services/snapshots.ts.
+  await pruneSnapshots(containerId, 20);
 
   const messages = sessionToOpenAIMessages(session);
   const allToolCalls: ToolCallRecord[] = [];

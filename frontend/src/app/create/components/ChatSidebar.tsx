@@ -12,6 +12,7 @@ export const ChatSidebar = ({
   textareaRef,
   onKeyDown,
   formatMessageContent,
+  onEditMessage,
 }) => {
   return (
     <div className="w-80 bg-gray-900 border-r border-gray-800 flex flex-col">
@@ -22,6 +23,11 @@ export const ChatSidebar = ({
               key={message.id}
               message={message}
               formatMessageContent={formatMessageContent}
+              onEdit={
+                message.role === "user" && onEditMessage
+                  ? (newContent) => onEditMessage(message.id, newContent)
+                  : undefined
+              }
             />
           ))}
           <div ref={messagesEndRef} />

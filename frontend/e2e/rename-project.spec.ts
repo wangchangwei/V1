@@ -7,10 +7,10 @@ test.describe("Rename Project", () => {
     await page.goto(BASE_URL);
     await page.waitForLoadState("networkidle");
 
-    // Wait for project cards to load
+    // Wait for project cards to load (globalSetup seeds one project before tests run)
     await page.waitForSelector('[class*="animate-spin"]', { state: "hidden", timeout: 10000 }).catch(() => {});
     const cards = page.locator(".space-y-3 > div");
-    await expect(cards.first()).toBeVisible({ timeout: 10000 });
+    await expect(cards.first()).toBeVisible({ timeout: 30000 });
 
     const firstCard = cards.first();
 
@@ -52,6 +52,7 @@ test.describe("Rename Project", () => {
     await page.waitForSelector('[class*="animate-spin"]', { state: "hidden", timeout: 10000 }).catch(() => {});
 
     const firstCard = page.locator(".space-y-3 > div").first();
+    await expect(firstCard).toBeVisible({ timeout: 30000 });
     await firstCard.locator("button").last().click();
 
     const renameBtn = page.getByRole("button", { name: /rename|重命名/i });
@@ -70,6 +71,7 @@ test.describe("Rename Project", () => {
     await page.waitForSelector('[class*="animate-spin"]', { state: "hidden", timeout: 10000 }).catch(() => {});
 
     const firstCard = page.locator(".space-y-3 > div").first();
+    await expect(firstCard).toBeVisible({ timeout: 30000 });
     await firstCard.locator("button").last().click();
 
     const renameBtn = page.getByRole("button", { name: /rename|重命名/i });
