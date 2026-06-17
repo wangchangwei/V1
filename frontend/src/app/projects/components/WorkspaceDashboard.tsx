@@ -9,6 +9,7 @@ import {
   Globe,
   Home,
   Layers,
+  Settings,
   Menu,
   Monitor,
   RefreshCw,
@@ -17,6 +18,7 @@ import {
   Upload,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE_URL } from "@/lib/backend/api";
 import { toast } from "react-hot-toast";
@@ -41,6 +43,7 @@ interface WorkspaceDashboardProps {
 export const WorkspaceDashboard = ({
   containerId,
 }: WorkspaceDashboardProps) => {
+  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState<string>("");
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
@@ -789,6 +792,15 @@ export const WorkspaceDashboard = ({
               title="Open in new tab"
             >
               <ExternalLink className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              onClick={() => router.push(`/projects/${containerId}/settings`)}
+              className="p-1.5 text-white/60 hover:text-white hover:bg-white/5 rounded-md transition-all backdrop-blur-sm"
+              title="Project settings"
+              data-testid="open-settings-gear"
+            >
+              <Settings className="w-3.5 h-3.5" />
             </button>
 
             <div className="h-4 w-px bg-gray-700/40 mx-1" />
