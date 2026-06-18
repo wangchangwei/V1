@@ -4,6 +4,10 @@ import path from "path";
 import os from "os";
 import { promisify } from "util";
 import { v4 as uuidv4 } from "uuid";
+import {
+  startPiContainer,
+  stopPiContainer,
+} from "./piContainerManager";
 
 const execAsync = promisify(exec);
 
@@ -14,6 +18,8 @@ const PROJECTS_JSON = path.join(DATA_DIR, "projects.json");
 
 interface ProjectMeta {
   port: number;
+  piPort?: number;
+  piContainerId?: string;
   createdAt: string;
   displayName?: string;
 }
@@ -237,6 +243,21 @@ export async function registerAndStartProject(projectId: string): Promise<{
     }
   });
 
+  // Start the pi sidecar container alongside bun dev.
+  try {
+    const piHandle = await startPiContainer({
+      projectId,
+      projectDir,
+      piPort: store[projectId].piPort,
+    });
+    store[projectId].piPort = piHandle.hostPort;
+    store[projectId].piContainerId = piHandle.containerId;
+    await saveProjectsStore(store);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[project] failed to start pi container for ${projectId}:`, msg);
+  }
+
   console.log(`[import] Project ${projectId} running on port ${assignedPort}`);
 
   return {
@@ -279,6 +300,23 @@ export async function createProject(): Promise<{
       console.log(`Project ${projectId} process exited with code ${code}`);
     }
   });
+
+  // Start the pi sidecar container alongside bun dev. Shares the same
+  // projectDir mount so the AI sees the same workspace the user sees.
+  try {
+    const piHandle = await startPiContainer({
+      projectId,
+      projectDir,
+      piPort: store[projectId].piPort,
+    });
+    store[projectId].piPort = piHandle.hostPort;
+    store[projectId].piContainerId = piHandle.containerId;
+    await saveProjectsStore(store);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[project] failed to start pi container for ${projectId}:`, msg);
+    // Continue — bun dev is running; user can retry pi via a future endpoint.
+  }
 
   console.log(`Project ${projectId} running on port ${assignedPort}`);
 
@@ -337,6 +375,21 @@ export async function startProject(projectId: string): Promise<{ port: number }>
     }
   });
 
+  // (Re)start pi sidecar if a previous containerId was recorded.
+  // recoverPiContainers() handles the case where the container itself
+  // is still running; here we only mint a fresh one when none exists.
+  if (!meta.piContainerId) {
+    try {
+      const piHandle = await startPiContainer({ projectId, projectDir });
+      meta.piPort = piHandle.hostPort;
+      meta.piContainerId = piHandle.containerId;
+      await saveProjectsStore(store);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[project] failed to start pi container for ${projectId}:`, msg);
+    }
+  }
+
   console.log(`Started project ${projectId} on port ${port}`);
   return { port };
 }
@@ -350,6 +403,22 @@ export async function stopProject(projectId: string): Promise<void> {
   try { running.process?.kill("SIGTERM"); } catch (_) {}
   releasePort(running.port);
   runningProcesses.delete(projectId);
+
+  // Tear down pi sidecar if present.
+  const store = await loadProjectsStore();
+  const meta = store[projectId];
+  if (meta?.piContainerId) {
+    try {
+      await stopPiContainer(meta.piContainerId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[project] failed to stop pi container for ${projectId}:`, msg);
+    }
+    meta.piContainerId = undefined;
+    meta.piPort = undefined;
+    await saveProjectsStore(store);
+  }
+
   console.log(`Stopped project ${projectId}, released port ${running.port}`);
 }
 
@@ -362,6 +431,15 @@ export async function deleteProject(projectId: string): Promise<void> {
   }
 
   const store = await loadProjectsStore();
+  const meta = store[projectId];
+  if (meta?.piContainerId) {
+    try {
+      await stopPiContainer(meta.piContainerId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[project] failed to stop pi container for ${projectId}:`, msg);
+    }
+  }
   delete store[projectId];
   await saveProjectsStore(store);
 

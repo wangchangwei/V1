@@ -2,9 +2,9 @@
 
 import { Paperclip, Palette, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { toast } from "react-hot-toast";
-import { createContainer, enrichPrompt, getModels, Model } from "../../../lib/backend/api";
+import { createContainer, enrichPrompt } from "../../../lib/backend/api";
 import { STYLES, findStyleByName } from "../../../lib/styles";
 import { useTranslations } from "next-intl";
 
@@ -22,24 +22,10 @@ export const ProjectPromptInterface = ({
   const [promptInput, setPromptInput] = useState("");
   const [isCreatingFromPrompt, setIsCreatingFromPrompt] = useState(false);
   const [showCommunityDropdown, setShowCommunityDropdown] = useState(false);
-  const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [showStyleDropdown, setShowStyleDropdown] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
-  const [modelOptions, setModelOptions] = useState<Model[]>([]);
-  const [selectedModel, setSelectedModel] = useState<Model | null>(null);
   const [selectedStyle, setSelectedStyle] = useState("Default");
   const router = useRouter();
-
-  useEffect(() => {
-    getModels()
-      .then((models) => {
-        setModelOptions(models);
-        if (models.length > 0) {
-          setSelectedModel(models[0]);
-        }
-      })
-      .catch(() => {});
-  }, []);
 
   const handlePromptSubmit = async () => {
     if (!promptInput.trim() || isCreatingFromPrompt) return;
@@ -62,7 +48,7 @@ export const ProjectPromptInterface = ({
       router.push(
         `/projects/${containerId}?prompt=${encodeURIComponent(
           promptInput.trim()
-        )}&model=${encodeURIComponent(selectedModel?.id ?? "")}&style=${encodeURIComponent(selectedStyle)}`
+        )}&style=${encodeURIComponent(selectedStyle)}`
       );
     } catch (error) {
       console.error("Failed to create project from prompt:", error);
@@ -90,14 +76,6 @@ export const ProjectPromptInterface = ({
     onTemplateChange(option);
     setShowCommunityDropdown(false);
     setShowStyleDropdown(false);
-    setShowModelDropdown(false);
-  };
-
-  const handleModelSelect = (option: Model) => {
-    setSelectedModel(option);
-    setShowModelDropdown(false);
-    setShowStyleDropdown(false);
-    setShowCommunityDropdown(false);
   };
 
   const handleStyleSelect = (name: string) => {
@@ -127,8 +105,7 @@ export const ProjectPromptInterface = ({
     try {
       const enriched = await enrichPrompt(
         text,
-        selectedTemplate,
-        selectedModel?.id
+        selectedTemplate
       );
       setPromptInput(enriched);
       toast.success("Prompt enriched", { duration: 1500 });
@@ -185,7 +162,6 @@ export const ProjectPromptInterface = ({
                         type="button"
                         onClick={() => {
                           setShowCommunityDropdown(!showCommunityDropdown);
-                          setShowModelDropdown(false);
                           setShowStyleDropdown(false);
                         }}
                         aria-label="Choose template"
@@ -240,7 +216,6 @@ export const ProjectPromptInterface = ({
                         onClick={() => {
                           setShowStyleDropdown(!showStyleDropdown);
                           setShowCommunityDropdown(false);
-                          setShowModelDropdown(false);
                         }}
                         aria-label={ts("chooseStyle")}
                         aria-haspopup="listbox"
@@ -281,59 +256,6 @@ export const ProjectPromptInterface = ({
                               className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/10 first:rounded-t-lg last:rounded-b-lg transition-all duration-200 cursor-pointer"
                             >
                               {ts(style.labelKey)}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="relative">
-                      <button
-                        className="flex items-center gap-2 px-3 py-1.5 bg-gray-800/20 hover:bg-gray-700/30 border border-gray-600/20 hover:border-gray-500/30 rounded-lg text-xs font-medium text-gray-300 hover:text-white transition-all duration-300 backdrop-blur-md bg-gradient-to-r from-white/[0.05] to-transparent cursor-pointer"
-                        type="button"
-                        onClick={() => {
-                          setShowModelDropdown(!showModelDropdown);
-                          setShowCommunityDropdown(false);
-                          setShowStyleDropdown(false);
-                        }}
-                        aria-label="Choose model"
-                        aria-haspopup="listbox"
-                        aria-expanded={showModelDropdown}
-                      >
-                        <span>{selectedModel?.name ?? "Loading..."}</span>
-                        <svg
-                          height="12"
-                          strokeLinejoin="round"
-                          viewBox="0 0 16 16"
-                          width="12"
-                          className={`text-gray-400 transition-transform duration-200 ${
-                            showModelDropdown ? "rotate-180" : ""
-                          }`}
-                        >
-                          <path
-                            fillRule="evenodd"
-                            clipRule="evenodd"
-                            d="M12.0607 6.74999L11.5303 7.28032L8.7071 10.1035C8.31657 10.4941 7.68341 10.4941 7.29288 10.1035L4.46966 7.28032L3.93933 6.74999L4.99999 5.68933L5.53032 6.21966L7.99999 8.68933L10.4697 6.21966L11 5.68933L12.0607 6.74999Z"
-                            fill="currentColor"
-                          />
-                        </svg>
-                      </button>
-
-                      {showModelDropdown && (
-                        <div
-                          role="listbox"
-                          aria-label="Model"
-                          className="absolute top-full left-0 mt-2 w-40 bg-gray-900/90 backdrop-blur-xl border border-gray-600/30 rounded-lg shadow-xl z-50 bg-gradient-to-br from-white/[0.08] to-white/[0.02]"
-                        >
-                          {modelOptions.map((option) => (
-                            <button
-                              key={option.id}
-                              role="option"
-                              aria-selected={selectedModel?.id === option.id}
-                              onClick={() => handleModelSelect(option)}
-                              className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/10 first:rounded-t-lg last:rounded-b-lg transition-all duration-200 cursor-pointer"
-                            >
-                              {option.name}
                             </button>
                           ))}
                         </div>
@@ -387,12 +309,11 @@ export const ProjectPromptInterface = ({
                   </div>
                 </div>
 
-                {(showCommunityDropdown || showModelDropdown || showStyleDropdown) && (
+                {(showCommunityDropdown || showStyleDropdown) && (
                   <div
                     className="fixed inset-0 z-40"
                     onClick={() => {
                       setShowCommunityDropdown(false);
-                      setShowModelDropdown(false);
                       setShowStyleDropdown(false);
                     }}
                   />

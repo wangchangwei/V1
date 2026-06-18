@@ -1,53 +1,17 @@
 import express from "express";
-import { enrichPrompt } from "../services/promptEnricher";
 
 const router = express.Router();
 
-router.post("/enrich", async (req, res) => {
-  const { prompt, template, model } = req.body ?? {};
-
-  if (typeof prompt !== "string" || !prompt.trim()) {
-    return res.status(400).json({
-      success: false,
-      error: "prompt is required and must be a non-empty string",
-    });
-  }
-  if (typeof template !== "string" || !template.trim()) {
-    return res.status(400).json({
-      success: false,
-      error: "template is required and must be a non-empty string",
-    });
-  }
-  if (model !== undefined && typeof model !== "string") {
-    return res.status(400).json({
-      success: false,
-      error: "model must be a string if provided",
-    });
-  }
-
-  // Cap input length defensively so a runaway LLM response stays bounded.
-  if (prompt.length > 2000) {
-    return res.status(400).json({
-      success: false,
-      error: "prompt is too long (max 2000 characters)",
-    });
-  }
-
-  try {
-    const enriched = await enrichPrompt({
-      prompt: prompt.trim(),
-      template: template.trim(),
-      model,
-    });
-    return res.json({ success: true, enriched });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error("[prompts/enrich] failed:", message);
-    return res.status(502).json({
-      success: false,
-      error: `AI enrichment failed: ${message}`,
-    });
-  }
+// Prompt enrichment previously delegated to a standalone LLM service
+// (services/promptEnricher.ts) which has been removed. The pi sidecar
+// now owns prompt handling end-to-end, so this route is intentionally
+// disabled. Kept as a stub so callers receive a clear error code instead
+// of a 404 from the router.
+router.post("/enrich", async (_req, res) => {
+  return res.status(501).json({
+    success: false,
+    error: "prompt enrichment is no longer supported (removed in pi migration)",
+  });
 });
 
 export default router;

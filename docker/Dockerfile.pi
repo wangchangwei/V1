@@ -1,0 +1,26 @@
+FROM node:20-alpine
+
+# Install pi coding agent globally
+RUN npm install -g @earendil-works/pi-coding-agent
+
+WORKDIR /workspace
+
+# wget for healthcheck
+RUN apk add --no-cache wget
+
+# Health check
+HEALTHCHECK --interval=2s --retries=5 --start-period=2s \
+  CMD wget -qO- http://localhost:7890/health || exit 1
+
+# The pi-http-entry.ts source is built into /app/dist/pi-http-entry.js by the
+# backend build step and copied into the image at build time, e.g.:
+#   docker build -f docker/Dockerfile.pi \
+#     --build-context backend=./backend \
+#     -t v1-pi:latest .
+#   with COPY --from=backend /app/dist/pi-http-entry.js /app/dist/
+#
+# This Dockerfile assumes the compiled JS is already present at the build
+# context root as ./pi-http-entry.js, or is mounted into /app/dist at runtime.
+EXPOSE 7890
+
+CMD ["node", "/app/dist/pi-http-entry.js"]

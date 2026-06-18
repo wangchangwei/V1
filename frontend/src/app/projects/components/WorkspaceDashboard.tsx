@@ -60,15 +60,8 @@ export const WorkspaceDashboard = ({
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(
     null
   );
-  const [selectedModel, setSelectedModel] = useState<string | undefined>(undefined);
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
   const [sidebarWidth, setSidebarWidth] = useState<number>(384);
-
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const modelFromUrl = urlParams.get("model");
-    if (modelFromUrl) setSelectedModel(modelFromUrl);
-  }, []);
 
   // Keep the assistant sidebar at 1/3 of the viewport width.
   useEffect(() => {
@@ -144,7 +137,6 @@ export const WorkspaceDashboard = ({
               setHasProcessedPrompt(true);
               setIsLoading(true);
 
-              const modelFromUrl = urlParams.get("model");
               const styleEntry = findStyleByName(urlParams.get("style"));
               const finalMessage = prependStyle(promptFromUrl, styleEntry);
 
@@ -152,8 +144,7 @@ export const WorkspaceDashboard = ({
                 const response = await sendChatMessage(
                   containerId,
                   finalMessage,
-                  [],
-                  modelFromUrl ?? undefined
+                  []
                 );
                 if (response.success) {
                   setMessages([
@@ -346,8 +337,7 @@ export const WorkspaceDashboard = ({
       () => {
         setIsLoading(false);
         setStreamingMessageId(null);
-      },
-      selectedModel
+      }
     );
 
     streamCancelRef.current = cancel;

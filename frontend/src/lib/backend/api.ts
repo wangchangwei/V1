@@ -88,16 +88,6 @@ export interface ChatHistoryResponse {
   sessionId: string;
 }
 
-export interface Model {
-  id: string;
-  name: string;
-}
-
-export interface GetModelsResponse {
-  success: boolean;
-  models: Model[];
-}
-
 export interface EnrichPromptResponse {
   success: boolean;
   enriched?: string;
@@ -263,21 +253,13 @@ export async function getChatHistory(
   return response;
 }
 
-export async function getModels(): Promise<Model[]> {
-  const response = await fetchApi<GetModelsResponse>("/models");
-  return response.models ?? [];
-}
-
 export async function enrichPrompt(
   prompt: string,
-  template: string,
-  model?: string
+  template: string
 ): Promise<string> {
-  const body: Record<string, string> = { prompt, template };
-  if (model) body.model = model;
   const response = await fetchApi<EnrichPromptResponse>("/prompts/enrich", {
     method: "POST",
-    body: JSON.stringify(body),
+    body: JSON.stringify({ prompt, template }),
   });
   if (!response.success || !response.enriched) {
     throw new Error(response.error || "AI enrichment failed");
@@ -288,16 +270,13 @@ export async function enrichPrompt(
 export async function sendChatMessage(
   containerId: string,
   message: string,
-  attachments?: any[],
-  model?: string
+  attachments?: any[]
 ): Promise<ChatResponse> {
-  const body: Record<string, any> = { message, attachments };
-  if (model) body.model = model;
   const response = await fetchApi<ChatResponse>(
     `/chat/${containerId}/messages`,
     {
       method: "POST",
-      body: JSON.stringify(body),
+      body: JSON.stringify({ message, attachments }),
     }
   );
   return response;
@@ -309,20 +288,16 @@ export function sendChatMessageStream(
   attachments: any[] = [],
   onMessage: (data: any) => void,
   onError?: (error: string) => void,
-  onComplete?: () => void,
-  model?: string
+  onComplete?: () => void
 ): () => void {
   let abortController = new AbortController();
-
-  const body: Record<string, any> = { message, attachments, stream: true };
-  if (model) body.model = model;
 
   fetch(`${API_BASE_URL}/chat/${containerId}/messages`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ message, attachments, stream: true }),
     signal: abortController.signal,
   })
     .then(async (response) => {

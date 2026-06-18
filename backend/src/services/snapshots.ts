@@ -1,13 +1,18 @@
 // Snapshot service for edit-and-regenerate.
 //
-// Snapshots are gzipped tarballs of a Docker container's /app directory,
-// stored on the host at data/snapshots/{containerId}/{messageId}.tar.gz.
-// Build artifacts (node_modules, .next, .git, .turbo) are excluded.
+// Snapshots are gzipped tarballs of the project directory on the host
+// (~/december-projects/{projectId}), stored at
+// data/snapshots/{containerId}/{messageId}.tar.gz. Build artifacts
+// (node_modules, .next, .git, .turbo) are excluded.
 //
-// On capture: `docker exec {cid} tar czf - --exclude=... -C /app .`
-//             with stdout piped to a host-side write stream.
-// On restore: cat {tarball} | docker exec -i {cid} tar xzf - -C /app
-//             pipes the file back into the container.
+// Both bun dev and the pi sidecar mount the same project directory, so
+// capturing from the host is the cleanest source of truth — no need to
+// reach into either container.
+//
+// On capture: `tar czf - --exclude=... -C {projectDir} .` with stdout
+//             piped to a host-side write stream.
+// On restore: cat {tarball} | tar xzf - -C {projectDir} (via spawn so we
+//             can pipe the tarball bytes through stdin).
 //
 // captureSnapshot returns Promise<boolean> — true on success, false on any
 // failure (exec error, writer error, missing tarball dir). The caller MUST
@@ -20,11 +25,13 @@
 // stream emits 'finish' (or 'close' on error). This prevents a racing
 // restoreSnapshot from observing a partial or missing tarball.
 
-import { exec } from "node:child_process";
+import { exec, spawn } from "node:child_process";
 import { promises as fs, createWriteStream } from "fs";
 import path from "path";
+import os from "os";
 
 let snapshotRoot: string = path.join(process.cwd(), "data", "snapshots");
+const PROJECTS_DIR = path.join(os.homedir(), "december-projects");
 const EXCLUDES = [
   "--exclude=node_modules",
   "--exclude=.next",
@@ -40,10 +47,15 @@ function dirForContainer(containerId: string): string {
   return path.join(snapshotRoot, containerId);
 }
 
+function projectDirFor(containerId: string): string {
+  return path.join(PROJECTS_DIR, containerId);
+}
+
 export async function captureSnapshot(
   containerId: string,
   messageId: string
 ): Promise<boolean> {
+  const projectDir = projectDirFor(containerId);
   try {
     await fs.mkdir(dirForContainer(containerId), { recursive: true });
   } catch (err: any) {
@@ -51,7 +63,7 @@ export async function captureSnapshot(
     return false;
   }
   const out = tarballPath(containerId, messageId);
-  const cmd = `docker exec ${containerId} tar czf - ${EXCLUDES.join(" ")} -C /app .`;
+  const cmd = `tar czf - ${EXCLUDES.join(" ")} -C ${projectDir} .`;
 
   return new Promise<boolean>((resolve) => {
     let execFailed = false;
@@ -97,9 +109,9 @@ export async function restoreSnapshot(
   // Existence check; throws so caller can handle 410.
   await fs.access(tarball);
   // Guard against zero-byte / truncated tarballs. A real snapshot of even an
-  // empty /app is several KB after gzip; anything smaller indicates a crashed
-  // capture, partial write, or storage corruption. Treat as missing so the
-  // PATCH handler returns 410 snapshot_gone.
+  // empty project is several KB after gzip; anything smaller indicates a
+  // crashed capture, partial write, or storage corruption. Treat as missing
+  // so the PATCH handler returns 410 snapshot_gone.
   const stat = await fs.stat(tarball);
   if (stat.size < 1024) {
     throw Object.assign(
@@ -107,15 +119,19 @@ export async function restoreSnapshot(
       { code: "ENOENT" }
     );
   }
+  const projectDir = projectDirFor(containerId);
+  const cmd = "tar";
+  const args = ["xzf", "-", "-C", projectDir];
+  const child = spawn(cmd, args, { stdio: ["pipe", "inherit", "inherit"] });
   const bytes = await fs.readFile(tarball);
-  const cmd = `docker exec -i ${containerId} tar xzf - -C /app`;
-  return new Promise((resolve, reject) => {
-    const child = exec(cmd, (err) => (err ? reject(err) : resolve()));
-    const stdin: any = child.stdin;
-    if (stdin && typeof stdin.write === "function") {
-      stdin.write(bytes);
-      stdin.end();
-    }
+  await new Promise<void>((resolve, reject) => {
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`tar restore exited with code ${code}`));
+    });
+    child.stdin?.on("error", reject);
+    child.stdin?.end(bytes);
   });
 }
 

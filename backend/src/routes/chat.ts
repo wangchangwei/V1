@@ -1,27 +1,32 @@
 import express from "express";
-import * as llmService from "../services/llm";
-import { isSupportedModel } from "../services/models";
+import { piChatStream, hasPiContainer } from "../services/piProxy";
+import {
+  getOrCreateChatSession,
+  sessionToPiMessages,
+  type Message,
+  type ToolCallRecord,
+} from "../services/chatSessions";
+import { captureSnapshot, pruneSnapshots, restoreSnapshot } from "../services/snapshots";
 import { withProjectLock } from "../services/locks";
-import { restoreSnapshot } from "../services/snapshots";
 
 const router = express.Router();
 
 //@ts-ignore
 router.post("/:containerId/messages", async (req, res) => {
   const { containerId } = req.params;
-  const { message, attachments = [], stream = false, model } = req.body;
-
-  if (model !== undefined && !isSupportedModel(model)) {
-    return res.status(400).json({
-      success: false,
-      error: `Unsupported model: ${model}`,
-    });
-  }
+  const { message, attachments = [], stream = false } = req.body;
 
   if (!message || typeof message !== "string") {
     return res.status(400).json({
       success: false,
       error: "Message is required",
+    });
+  }
+
+  if (!hasPiContainer(containerId)) {
+    return res.status(503).json({
+      success: false,
+      error: `Pi container not running for project ${containerId}`,
     });
   }
 
@@ -33,12 +38,7 @@ router.post("/:containerId/messages", async (req, res) => {
         res.setHeader("Connection", "keep-alive");
         res.setHeader("Access-Control-Allow-Origin", "*");
 
-        const messageStream = llmService.sendMessageStream(
-          containerId,
-          message,
-          attachments,
-          model
-        );
+        const stream = runChatTurn(containerId, message, attachments, req);
 
         const keepalive = setInterval(() => {
           try {
@@ -48,7 +48,7 @@ router.post("/:containerId/messages", async (req, res) => {
         (res as any).__keepalive = keepalive;
 
         try {
-          for await (const chunk of messageStream) {
+          for await (const chunk of stream) {
             res.write(`data: ${JSON.stringify(chunk)}\n\n`);
           }
         } finally {
@@ -58,11 +58,10 @@ router.post("/:containerId/messages", async (req, res) => {
         res.write("data: [DONE]\n\n");
         res.end();
       } else {
-        const { userMessage, assistantMessage } = await llmService.sendMessage(
+        const { userMessage, assistantMessage } = await runChatTurnNonStreaming(
           containerId,
           message,
-          attachments,
-          model
+          attachments
         );
 
         res.json({
@@ -108,7 +107,7 @@ router.get("/:containerId/messages", async (req, res) => {
   const { containerId } = req.params;
 
   try {
-    const session = llmService.getOrCreateChatSession(containerId);
+    const session = getOrCreateChatSession(containerId);
 
     res.json({
       success: true,
@@ -138,7 +137,7 @@ router.patch("/:containerId/messages/:messageId", async (req, res) => {
     return res.status(400).json({ success: false, error: "content must be a non-empty string" });
   }
 
-  const session = llmService.getOrCreateChatSession(containerId);
+  const session = getOrCreateChatSession(containerId);
   const editIndex = session.messages.findIndex((m) => m.id === messageId);
   if (editIndex < 0) {
     return res.status(404).json({ success: false, error: "message_not_found" });
@@ -149,6 +148,13 @@ router.patch("/:containerId/messages/:messageId", async (req, res) => {
   }
   if (!target.snapshotId) {
     return res.status(410).json({ success: false, error: "snapshot_gone" });
+  }
+
+  if (!hasPiContainer(containerId)) {
+    return res.status(503).json({
+      success: false,
+      error: `Pi container not running for project ${containerId}`,
+    });
   }
 
   try {
@@ -180,7 +186,7 @@ router.patch("/:containerId/messages/:messageId", async (req, res) => {
       res.setHeader("Connection", "keep-alive");
       res.setHeader("Access-Control-Allow-Origin", "*");
 
-      const stream = llmService.sendMessageStream(containerId, content, [], undefined);
+      const stream = runChatTurn(containerId, content, [], req);
       const keepalive = setInterval(() => {
         try { res.write(": keepalive\n\n"); } catch (_) {}
       }, 15000);
@@ -213,5 +219,141 @@ router.patch("/:containerId/messages/:messageId", async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// Run a chat turn: append user message, capture snapshot, stream from pi.
+// Emits V1-format SSE chunks that the frontend already understands.
+// `req` is passed to forward client-disconnect as an AbortSignal.
+async function* runChatTurn(
+  containerId: string,
+  userMessage: string,
+  attachments: any[],
+  req: any
+): AsyncGenerator<{ type: string; data: any }> {
+  const session = getOrCreateChatSession(containerId);
+
+  const userMsg: Message = {
+    id: `user-${Date.now()}`,
+    role: "user",
+    content: userMessage,
+    timestamp: new Date().toISOString(),
+    attachments: attachments && attachments.length > 0 ? attachments : undefined,
+  };
+  session.messages.push(userMsg);
+  yield { type: "user", data: userMsg };
+
+  // Capture filesystem snapshot BEFORE the AI starts mutating files.
+  // Best-effort: only set snapshotId on success so the message is
+  // not marked as regenerable when no snapshot exists.
+  const captureOk = await captureSnapshot(containerId, userMsg.id);
+  if (captureOk) {
+    userMsg.snapshotId = userMsg.id;
+  }
+  await pruneSnapshots(containerId, 20);
+
+  const allToolCalls: ToolCallRecord[] = [];
+  let finalContent = "";
+  let seenDone = false;
+
+  try {
+    for await (const chunk of piChatStream(
+      containerId,
+      sessionToPiMessages(session),
+      req?.signal
+    )) {
+      if (chunk.type === "assistant") {
+        // pi emits delta-style assistant chunks; concatenate text deltas.
+        const text = extractAssistantText(chunk.data);
+        if (text) finalContent += text;
+      } else if (chunk.type === "tool_call") {
+        const record: ToolCallRecord = {
+          id: chunk.data.id,
+          name: chunk.data.name,
+          args: chunk.data.args ?? "",
+          ok: true,
+          result: "",
+        };
+        allToolCalls.push(record);
+      } else if (chunk.type === "tool_result") {
+        const last = allToolCalls.find((tc) => tc.id === chunk.data.id);
+        if (last) {
+          last.ok = !!chunk.data.ok;
+          last.result = chunk.data.result ?? "";
+        }
+      } else if (chunk.type === "error") {
+        yield { type: "error", data: chunk.data };
+        return;
+      }
+      yield chunk;
+      if (chunk.type === "done") {
+        seenDone = true;
+        break;
+      }
+    }
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    console.error("[chat] pi stream failed:", err.message);
+    yield { type: "error", data: { error: err.message } };
+    return;
+  }
+
+  const assistantMsg: Message = {
+    id: `assistant-${Date.now()}`,
+    role: "assistant",
+    content: finalContent || "Sorry, I could not generate a response.",
+    timestamp: new Date().toISOString(),
+    toolCalls: allToolCalls.length > 0 ? allToolCalls : undefined,
+  };
+  session.messages.push(assistantMsg);
+  session.updatedAt = new Date().toISOString();
+
+  if (!seenDone) {
+    yield { type: "assistant", data: assistantMsg };
+    yield { type: "done", data: assistantMsg };
+  }
+}
+
+// Non-streaming variant for clients without SSE support.
+// Collects the full assistant message then returns it as JSON.
+async function runChatTurnNonStreaming(
+  containerId: string,
+  userMessage: string,
+  attachments: any[]
+): Promise<{ userMessage: Message; assistantMessage: Message }> {
+  let userMsg: Message | undefined;
+  let assistantMsg: Message | undefined;
+
+  for await (const chunk of runChatTurn(containerId, userMessage, attachments, undefined)) {
+    if (chunk.type === "user") userMsg = chunk.data;
+    if (chunk.type === "done") assistantMsg = chunk.data;
+    if (chunk.type === "error") {
+      throw new Error(chunk.data?.error ?? "pi stream error");
+    }
+  }
+
+  if (!userMsg) throw new Error("stream produced no user message");
+  if (!assistantMsg) {
+    assistantMsg = {
+      id: `assistant-${Date.now()}`,
+      role: "assistant",
+      content: "Sorry, I could not generate a response.",
+      timestamp: new Date().toISOString(),
+    };
+  }
+  return { userMessage: userMsg, assistantMessage: assistantMsg };
+}
+
+// pi-http-entry sends delta-style {content} chunks during streaming and
+// a full {content, message} chunk at message_end. Extract the visible text.
+function extractAssistantText(data: any): string {
+  if (!data) return "";
+  if (typeof data.content === "string") return data.content;
+  if (Array.isArray(data.content)) {
+    return data.content
+      .filter((c: any) => c?.type === "text")
+      .map((c: any) => c.text ?? "")
+      .join("");
+  }
+  return "";
+}
 
 export default router;
