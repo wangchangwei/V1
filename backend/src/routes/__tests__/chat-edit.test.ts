@@ -10,7 +10,8 @@ const mocks = vi.hoisted(() => {
     listSnapshots: vi.fn().mockResolvedValue([]),
     pruneSnapshots: vi.fn().mockResolvedValue(undefined),
     deleteSnapshot: vi.fn().mockResolvedValue(undefined),
-    sendMessageStream: vi.fn(),
+    piChatStream: vi.fn(),
+    hasPiContainer: vi.fn().mockReturnValue(true),
   };
 });
 
@@ -22,17 +23,18 @@ vi.mock("../../services/snapshots", () => ({
   deleteSnapshot: mocks.deleteSnapshot,
 }));
 
-vi.mock("../../services/llm", async () => {
-  const actual = await vi.importActual<any>("../../services/llm");
+vi.mock("../../services/piProxy", async () => {
+  const actual = await vi.importActual<any>("../../services/piProxy");
   return {
     ...actual,
-    sendMessageStream: (...args: any[]) => mocks.sendMessageStream(...args),
+    piChatStream: (...args: any[]) => mocks.piChatStream(...args),
+    hasPiContainer: (...args: any[]) => mocks.hasPiContainer(...args),
   };
 });
 
 import chatRouter from "../chat";
 import { __resetLocksForTests } from "../../services/locks";
-import * as llmService from "../../services/llm";
+import * as chatSessions from "../../services/chatSessions";
 
 const app = express();
 app.use(express.json());
@@ -41,21 +43,23 @@ app.use("/chat", chatRouter);
 beforeEach(() => {
   mocks.captureSnapshot.mockClear();
   mocks.restoreSnapshot.mockClear();
-  mocks.sendMessageStream.mockReset();
+  mocks.piChatStream.mockReset();
+  mocks.hasPiContainer.mockReset();
+  mocks.hasPiContainer.mockReturnValue(true);
   __resetLocksForTests();
   // Clear the in-memory chat sessions map
-  llmService.chatSessions.clear();
+  chatSessions.chatSessions.clear();
 });
 
 afterEach(() => {
-  llmService.chatSessions.clear();
+  chatSessions.chatSessions.clear();
 });
 
 const CID = "cid-1";
 const MID = "user-42";
 
 async function seedSession() {
-  const session = llmService.getOrCreateChatSession(CID);
+  const session = chatSessions.getOrCreateChatSession(CID);
   session.messages.push({
     id: MID,
     role: "user",
@@ -91,7 +95,7 @@ describe("PATCH /chat/:containerId/messages/:messageId", () => {
     mocks.restoreSnapshot.mockImplementation(async () => {
       callOrder.push("restore");
     });
-    mocks.sendMessageStream.mockImplementation(async function* () {
+    mocks.piChatStream.mockImplementation(async function* () {
       callOrder.push("stream");
       yield { type: "done", data: {} };
     });
@@ -107,7 +111,7 @@ describe("PATCH /chat/:containerId/messages/:messageId", () => {
   it("truncates session.messages to [0..N] and updates content at N", async () => {
     const session = await seedSession();
     mocks.restoreSnapshot.mockResolvedValue(undefined);
-    mocks.sendMessageStream.mockImplementation(async function* () {
+    mocks.piChatStream.mockImplementation(async function* () {
       yield { type: "done", data: {} };
     });
 
@@ -116,9 +120,20 @@ describe("PATCH /chat/:containerId/messages/:messageId", () => {
       .send({ content: "edited prompt" })
       .expect(200);
 
-    // After PATCH: messages 0..0 kept (user-42 only), message-1+ dropped
-    expect(session.messages.map((m: any) => m.id)).toEqual([MID]);
-    expect(session.messages[0].content).toBe("edited prompt");
+    // After PATCH: original user message kept with new content, post-MID
+    // messages (assistant-1, user-43, assistant-2) dropped. runChatTurn
+    // appends a fresh user message and the streamed assistant response.
+    expect(session.messages[0]!.id).toBe(MID);
+    expect(session.messages[0]!.content).toBe("edited prompt");
+    expect(session.messages.length).toBe(3);
+    expect(session.messages[1]!.role).toBe("user");
+    expect(session.messages[1]!.content).toBe("edited prompt");
+    expect(session.messages[2]!.role).toBe("assistant");
+    // The seeded post-MID messages must be gone.
+    const ids = session.messages.map((m: any) => m.id);
+    expect(ids).not.toContain("assistant-1");
+    expect(ids).not.toContain("user-43");
+    expect(ids).not.toContain("assistant-2");
   });
 
   it("returns 400 on empty content", async () => {
@@ -150,7 +165,7 @@ describe("PATCH /chat/:containerId/messages/:messageId", () => {
     mocks.restoreSnapshot.mockRejectedValue(
       Object.assign(new Error("ENOENT"), { code: "ENOENT" })
     );
-    mocks.sendMessageStream.mockImplementation(async function* () {
+    mocks.piChatStream.mockImplementation(async function* () {
       yield { type: "done", data: {} };
     });
     await request(app)
@@ -168,7 +183,7 @@ describe("PATCH /chat/:containerId/messages/:messageId", () => {
         code: "ENOENT",
       })
     );
-    mocks.sendMessageStream.mockImplementation(async function* () {
+    mocks.piChatStream.mockImplementation(async function* () {
       yield { type: "done", data: {} };
     });
     await request(app)
@@ -181,7 +196,7 @@ describe("PATCH /chat/:containerId/messages/:messageId", () => {
     const session = await seedSession();
     const originalLength = session.messages.length;
     mocks.restoreSnapshot.mockRejectedValue(new Error("tarball corrupt"));
-    mocks.sendMessageStream.mockImplementation(async function* () {
+    mocks.piChatStream.mockImplementation(async function* () {
       yield { type: "done", data: {} };
     });
     await request(app)
@@ -192,21 +207,23 @@ describe("PATCH /chat/:containerId/messages/:messageId", () => {
     expect(session.messages.length).toBe(originalLength);
   });
 
-  it("invokes sendMessageStream with new content and same containerId", async () => {
+  it("invokes piChatStream with new content and same containerId", async () => {
     await seedSession();
     mocks.restoreSnapshot.mockResolvedValue(undefined);
-    mocks.sendMessageStream.mockImplementation(async function* () {
+    mocks.piChatStream.mockImplementation(async function* () {
       yield { type: "done", data: {} };
     });
     await request(app)
       .patch(`/chat/${CID}/messages/${MID}`)
       .send({ content: "brand new prompt" })
       .expect(200);
-    expect(mocks.sendMessageStream).toHaveBeenCalledWith(
-      CID,
-      "brand new prompt",
-      [],
-      undefined
-    );
+    // piChatStream is called with (projectId, messages, signal). The edited
+    // user message content is reflected in the messages array passed to pi.
+    expect(mocks.piChatStream).toHaveBeenCalled();
+    const callArgs = mocks.piChatStream.mock.calls[0]!;
+    expect(callArgs[0]).toBe(CID);
+    const messagesArg = callArgs[1] as Array<{ role: string; content: string }>;
+    const lastUserMessage = [...messagesArg].reverse().find((m) => m.role === "user");
+    expect(lastUserMessage?.content).toBe("brand new prompt");
   });
 });

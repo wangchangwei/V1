@@ -142,7 +142,7 @@ router.patch("/:containerId/messages/:messageId", async (req, res) => {
   if (editIndex < 0) {
     return res.status(404).json({ success: false, error: "message_not_found" });
   }
-  const target = session.messages[editIndex];
+  const target = session.messages[editIndex]!;
   if (target.role !== "user") {
     return res.status(400).json({ success: false, error: "can only edit user-role messages" });
   }
@@ -177,7 +177,7 @@ router.patch("/:containerId/messages/:messageId", async (req, res) => {
 
       // 2. Truncate session.messages to [0..editIndex], then update content.
       session.messages = session.messages.slice(0, editIndex + 1);
-      session.messages[editIndex].content = content;
+      session.messages[editIndex]!.content = content;
       session.updatedAt = new Date().toISOString();
 
       // 3. Stream the regenerated AI response.
