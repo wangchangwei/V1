@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 import {
   startPiContainer,
   stopPiContainer,
+  runningContainers,
 } from "./piContainerManager";
 
 const execAsync = promisify(exec);
@@ -375,10 +376,11 @@ export async function startProject(projectId: string): Promise<{ port: number }>
     }
   });
 
-  // (Re)start pi sidecar if a previous containerId was recorded.
-  // recoverPiContainers() handles the case where the container itself
-  // is still running; here we only mint a fresh one when none exists.
-  if (!meta.piContainerId) {
+  // (Re)start pi sidecar only if no live container is registered.
+  // runningContainers is authoritative — recoverPiContainers() populates it
+  // at startup, so a still-running container from a previous process is
+  // visible here even if its hint was lost from projects.json.
+  if (!runningContainers.has(projectId)) {
     try {
       const piHandle = await startPiContainer({ projectId, projectDir });
       meta.piPort = piHandle.hostPort;
@@ -404,16 +406,21 @@ export async function stopProject(projectId: string): Promise<void> {
   releasePort(running.port);
   runningProcesses.delete(projectId);
 
-  // Tear down pi sidecar if present.
-  const store = await loadProjectsStore();
-  const meta = store[projectId];
-  if (meta?.piContainerId) {
+  // Tear down pi sidecar if present. runningContainers is the authoritative
+  // in-memory registry; projects.json only stores the hint for recovery.
+  const piHandle = runningContainers.get(projectId);
+  if (piHandle) {
     try {
-      await stopPiContainer(meta.piContainerId);
+      await stopPiContainer(piHandle.containerId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[project] failed to stop pi container for ${projectId}:`, msg);
     }
+  }
+  // Clear the recovery hint regardless of stop outcome.
+  const store = await loadProjectsStore();
+  const meta = store[projectId];
+  if (meta) {
     meta.piContainerId = undefined;
     meta.piPort = undefined;
     await saveProjectsStore(store);
@@ -430,16 +437,17 @@ export async function deleteProject(projectId: string): Promise<void> {
     runningProcesses.delete(projectId);
   }
 
-  const store = await loadProjectsStore();
-  const meta = store[projectId];
-  if (meta?.piContainerId) {
+  // runningContainers is authoritative; stop pi sidecar if present.
+  const piHandle = runningContainers.get(projectId);
+  if (piHandle) {
     try {
-      await stopPiContainer(meta.piContainerId);
+      await stopPiContainer(piHandle.containerId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[project] failed to stop pi container for ${projectId}:`, msg);
     }
   }
+  const store = await loadProjectsStore();
   delete store[projectId];
   await saveProjectsStore(store);
 

@@ -23,4 +23,9 @@ HEALTHCHECK --interval=2s --retries=5 --start-period=2s \
 # context root as ./pi-http-entry.js, or is mounted into /app/dist at runtime.
 EXPOSE 7890
 
+# Run as a non-root user. The /workspace mount is still RW so pi can write
+# files; we only restrict privileges inside the container.
+RUN addgroup -S piagent && adduser -S piagent -G piagent
+USER piagent
+
 CMD ["node", "/app/dist/pi-http-entry.js"]

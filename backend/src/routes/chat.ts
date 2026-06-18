@@ -1,4 +1,5 @@
 import express from "express";
+import type { Request, Response } from "express";
 import { piChatStream, hasPiContainer } from "../services/piProxy";
 import {
   getOrCreateChatSession,
@@ -11,10 +12,9 @@ import { withProjectLock } from "../services/locks";
 
 const router = express.Router();
 
-//@ts-ignore
-router.post("/:containerId/messages", async (req, res) => {
-  const { containerId } = req.params;
-  const { message, attachments = [], stream = false } = req.body;
+router.post("/:containerId/messages", async (req: Request, res: Response) => {
+  const containerId = req.params.containerId as string;
+  const { message, attachments = [], stream = false } = req.body ?? {};
 
   if (!message || typeof message !== "string") {
     return res.status(400).json({
@@ -103,8 +103,8 @@ router.post("/:containerId/messages", async (req, res) => {
   }
 });
 
-router.get("/:containerId/messages", async (req, res) => {
-  const { containerId } = req.params;
+router.get("/:containerId/messages", async (req: Request, res: Response) => {
+  const containerId = req.params.containerId as string;
 
   try {
     const session = getOrCreateChatSession(containerId);
@@ -129,8 +129,9 @@ router.get("/:containerId/messages", async (req, res) => {
 // Atomicity invariant: restoreSnapshot MUST complete before
 // session.messages is truncated. If restore throws, the session is
 // left untouched and the response is 500 (or 410 if tarball missing).
-router.patch("/:containerId/messages/:messageId", async (req, res) => {
-  const { containerId, messageId } = req.params;
+router.patch("/:containerId/messages/:messageId", async (req: Request, res: Response) => {
+  const containerId = req.params.containerId as string;
+  const messageId = req.params.messageId as string;
   const { content } = req.body ?? {};
 
   if (typeof content !== "string" || content.length === 0) {

@@ -190,6 +190,17 @@ function translateEvent(event: AgentSessionEvent): V1Chunk | null {
 }
 
 app.post("/v1/chat/completions", async (req: Request, res: Response) => {
+  // Auth: V1 backend sets a shared PI_SECRET when starting this container
+  // (see piContainerManager). We require the same value in x-pi-secret.
+  // /health is intentionally unauthenticated so docker HEALTHCHECK works.
+  const expected = process.env.PI_SECRET;
+  if (expected) {
+    const provided = req.header("x-pi-secret");
+    if (!provided || provided !== expected) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+  }
+
   const { messages, stream = true } = (req.body ?? {}) as ChatRequest;
 
   if (stream === false) {

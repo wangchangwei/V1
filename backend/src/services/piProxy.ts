@@ -7,8 +7,13 @@
 // pi-http-entry.ts (running inside the container) accepts the full
 // conversation history and streams back V1-format SSE chunks. This module
 // is a pure pass-through — no translation or session state is kept here.
+//
+// Auth: every request carries an x-pi-secret header validated by the
+// container's pi-http-entry. The shared secret is generated/loaded by
+// piContainerManager and is the same for every container it spawns in
+// this V1 process (see getPiSecret in piContainerManager).
 
-import { runningContainers } from "./piContainerManager.js";
+import { runningContainers, getPiSecret } from "./piContainerManager";
 
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -32,6 +37,12 @@ export function getPiContainerHostPort(projectId: string): number {
   return handle.hostPort;
 }
 
+// Read the shared secret that piContainerManager minted/loaded at process
+// start. Exposed for tests; runtime callers go through piChatStream.
+export function getPiProxySecret(): string {
+  return getPiSecret();
+}
+
 /**
  * Streams chat completion from the pi sidecar container.
  *
@@ -47,12 +58,17 @@ export async function* piChatStream(
 ): AsyncGenerator<PiChatChunk> {
   const hostPort = getPiContainerHostPort(projectId);
   const url = `http://127.0.0.1:${hostPort}/v1/chat/completions`;
+  const secret = getPiSecret();
 
   let response: Response;
   try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (secret) headers["x-pi-secret"] = secret;
     response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ messages, stream: true }),
       signal,
     });

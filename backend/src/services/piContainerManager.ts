@@ -8,24 +8,22 @@
 // Docker is invoked via the `docker` CLI on the host (V1 itself is not
 // containerized). Port allocation is host-side: pi uses 9000-9100, separate
 // from bun dev's 8000+ range managed by project.ts.
+//
+// `runningContainers` is the authoritative in-memory registry. `projects.json`
+// stores `piContainerId` and `piPort` only as a recovery hint read once at
+// startup by `recoverPiContainers`.
 
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { randomBytes } from "node:crypto";
+import { config } from "../config";
 
 const execAsync = promisify(exec);
 
-const PI_PORT_BASE = 9000;
-const PI_PORT_RANGE = 100;
-const PI_INTERNAL_PORT = 7890;
-const DEFAULT_IMAGE = "v1-pi:latest";
 const PROJECTS_DIR = path.join(process.cwd(), "data");
 const PROJECTS_JSON = path.join(PROJECTS_DIR, "projects.json");
-
-const HEALTH_INITIAL_WAIT_MS = 2000;
-const HEALTH_RETRY_INTERVAL_MS = 2000;
-const HEALTH_MAX_ATTEMPTS = 5;
 
 export interface PiContainerConfig {
   projectId: string;
@@ -40,7 +38,20 @@ export interface PiContainerHandle {
   projectId: string;
 }
 
+// Shared secret used to authenticate V1 backend -> pi container requests.
+// Lazy-initialized: if PI_SECRET env is unset, generate one per process so
+// recovery across restarts produces a fresh secret (containers from a previous
+// run become unreachable, which is the safer failure mode).
+let activePiSecret: string = config.pi.secret;
+export function getPiSecret(): string {
+  if (!activePiSecret) {
+    activePiSecret = randomBytes(32).toString("hex");
+  }
+  return activePiSecret;
+}
+
 // Shared registry: piProxy.ts looks up containers by projectId.
+// This is the authoritative in-memory source for runtime operations.
 export const runningContainers: Map<string, PiContainerHandle> = new Map();
 
 interface ProjectsStore {
@@ -57,7 +68,8 @@ async function loadProjectsStore(): Promise<ProjectsStore> {
 }
 
 async function findAvailableHostPort(): Promise<number> {
-  for (let port = PI_PORT_BASE; port < PI_PORT_BASE + PI_PORT_RANGE; port++) {
+  const { start, size } = config.pi.hostPortRange;
+  for (let port = start; port < start + size; port++) {
     const inUse = [...runningContainers.values()].some((h) => h.hostPort === port);
     if (inUse) continue;
     try {
@@ -68,27 +80,28 @@ async function findAvailableHostPort(): Promise<number> {
       return port;
     }
   }
-  throw new Error("No available host port in 9000-9100 range for pi container");
+  throw new Error(`No available host port in ${start}-${start + size} range for pi container`);
 }
 
 function containerName(projectId: string): string {
   return `v1-pi-${projectId}`;
 }
 
-function resolveImage(config: PiContainerConfig): string {
-  return config.image ?? process.env.PI_IMAGE ?? DEFAULT_IMAGE;
+function resolveImage(configIn: PiContainerConfig): string {
+  return configIn.image ?? process.env.PI_IMAGE ?? config.pi.image;
 }
 
 export async function startPiContainer(
-  config: PiContainerConfig
+  configIn: PiContainerConfig
 ): Promise<PiContainerHandle> {
-  if (runningContainers.has(config.projectId)) {
-    throw new Error(`pi container already running for project ${config.projectId}`);
+  if (runningContainers.has(configIn.projectId)) {
+    throw new Error(`pi container already running for project ${configIn.projectId}`);
   }
 
-  const image = resolveImage(config);
-  const hostPort = config.piPort ?? (await findAvailableHostPort());
-  const name = containerName(config.projectId);
+  const image = resolveImage(configIn);
+  const hostPort = configIn.piPort ?? (await findAvailableHostPort());
+  const name = containerName(configIn.projectId);
+  const secret = getPiSecret();
 
   // Idempotent: if a previous container with the same name exists (orphaned
   // or crashed), remove it before launching a fresh one.
@@ -98,12 +111,20 @@ export async function startPiContainer(
     // Container doesn't exist — fine.
   }
 
+  const { memory, cpus, pidsLimit } = config.pi.containerResources;
   const cmd = [
     "docker run -d",
     `--name ${name}`,
-    `--label v1.project=${config.projectId}`,
-    `-v ${config.projectDir}:/workspace`,
-    `-p ${hostPort}:${PI_INTERNAL_PORT}`,
+    `--label v1.project=${configIn.projectId}`,
+    `-v ${configIn.projectDir}:/workspace`,
+    `-p ${hostPort}:${config.pi.internalPort}`,
+    `-e PI_SECRET=${secret}`,
+    `--memory=${memory}`,
+    `--cpus=${cpus}`,
+    `--pids-limit=${pidsLimit}`,
+    `--cap-drop=ALL`,
+    `--security-opt=no-new-privileges`,
+    `--network=bridge`,
     `--restart no`,
     image,
   ].join(" ");
@@ -111,15 +132,15 @@ export async function startPiContainer(
   const { stdout: containerId } = await execAsync(cmd);
   const trimmedId = containerId.trim();
 
-  runningContainers.set(config.projectId, {
+  runningContainers.set(configIn.projectId, {
     containerId: trimmedId,
     hostPort,
-    projectId: config.projectId,
+    projectId: configIn.projectId,
   });
 
   await waitForHealthy(trimmedId);
 
-  return { containerId: trimmedId, hostPort, projectId: config.projectId };
+  return { containerId: trimmedId, hostPort, projectId: configIn.projectId };
 }
 
 export async function stopPiContainer(containerId: string): Promise<void> {
@@ -153,19 +174,24 @@ export async function isPiContainerHealthy(containerId: string): Promise<boolean
 }
 
 async function waitForHealthy(containerId: string): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, HEALTH_INITIAL_WAIT_MS));
-  for (let attempt = 0; attempt < HEALTH_MAX_ATTEMPTS; attempt++) {
+  const { initialWaitMs, retryIntervalMs, maxAttempts } = config.pi.healthCheck;
+  await new Promise((resolve) => setTimeout(resolve, initialWaitMs));
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (await isPiContainerHealthy(containerId)) return;
-    await new Promise((resolve) => setTimeout(resolve, HEALTH_RETRY_INTERVAL_MS));
+    await new Promise((resolve) => setTimeout(resolve, retryIntervalMs));
   }
   throw new Error(
-    `pi container ${containerId} failed health check after ${HEALTH_MAX_ATTEMPTS} attempts`
+    `pi container ${containerId} failed health check after ${maxAttempts} attempts`
   );
 }
 
 // On V1 startup, re-attach to any pi containers that survived a restart.
 // Containers whose projectId no longer exists in projects.json are kept
 // running (orphan preservation — operator cleans them up manually).
+//
+// Note: a container recovered from a previous process run may carry a stale
+// `piPort` hint in projects.json. We trust `docker port` over the hint and
+// re-populate runningContainers as the authoritative source.
 export async function recoverPiContainers(): Promise<void> {
   const { stdout } = await execAsync(
     `docker ps -a --filter label=v1.project --format '{{.ID}} {{.Label "v1.project"}}'`
@@ -192,14 +218,14 @@ export async function recoverPiContainers(): Promise<void> {
         const { stdout: portOut } = await execAsync(
           `docker port ${containerId}`
         );
-        const m = portOut.match(new RegExp(`${PI_INTERNAL_PORT}/tcp -> .*:(\\d+)`));
+        const m = portOut.match(new RegExp(`${config.pi.internalPort}/tcp -> .*:(\\d+)`));
         if (m) hostPort = Number(m[1]);
       } catch {
         // Container may not be running; skip port discovery.
       }
 
       if (hostPort === undefined) {
-        console.log(`[recover] pi container ${containerId} (project ${projectId}) not listening on ${PI_INTERNAL_PORT} — skipping`);
+        console.log(`[recover] pi container ${containerId} (project ${projectId}) not listening on ${config.pi.internalPort} — skipping`);
         continue;
       }
 

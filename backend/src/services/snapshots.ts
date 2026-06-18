@@ -25,7 +25,7 @@
 // stream emits 'finish' (or 'close' on error). This prevents a racing
 // restoreSnapshot from observing a partial or missing tarball.
 
-import { exec, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { promises as fs, createWriteStream } from "fs";
 import path from "path";
 import os from "os";
@@ -38,6 +38,16 @@ const EXCLUDES = [
   "--exclude=.git",
   "--exclude=.turbo",
 ];
+
+// `containerId` flows into filesystem paths AND into tar arguments. Whitelist
+// to a safe charset so a hostile value can never escape the project dir
+// (e.g. `../../etc`) or inject extra tar flags.
+const CONTAINER_ID_RE = /^[a-zA-Z0-9_-]+$/;
+function assertSafeContainerId(containerId: string): void {
+  if (!containerId || !CONTAINER_ID_RE.test(containerId)) {
+    throw new Error(`invalid containerId: ${containerId}`);
+  }
+}
 
 function tarballPath(containerId: string, messageId: string): string {
   return path.join(snapshotRoot, containerId, `${messageId}.tar.gz`);
@@ -55,6 +65,15 @@ export async function captureSnapshot(
   containerId: string,
   messageId: string
 ): Promise<boolean> {
+  // Defense in depth: tar args are array-typed (no shell), and containerId is
+  // whitelisted so it can never be a path or flag even if a future refactor
+  // interpolates it into a string.
+  try {
+    assertSafeContainerId(containerId);
+  } catch (err: any) {
+    console.warn(`[snapshots] refusing capture for unsafe containerId ${containerId}:`, err.message);
+    return false;
+  }
   const projectDir = projectDirFor(containerId);
   try {
     await fs.mkdir(dirForContainer(containerId), { recursive: true });
@@ -63,7 +82,6 @@ export async function captureSnapshot(
     return false;
   }
   const out = tarballPath(containerId, messageId);
-  const cmd = `tar czf - ${EXCLUDES.join(" ")} -C ${projectDir} .`;
 
   return new Promise<boolean>((resolve) => {
     let execFailed = false;
@@ -75,10 +93,23 @@ export async function captureSnapshot(
       resolve(ok);
     };
     const writer = createWriteStream(out);
-    const child = exec(cmd, (err) => {
-      if (err) {
+    const child = spawn(
+      "tar",
+      ["czf", "-", ...EXCLUDES, "-C", projectDir, "."],
+      { stdio: ["ignore", "pipe", "pipe"] }
+    );
+    let stderr = "";
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", (err) => {
+      execFailed = true;
+      console.warn(`[snapshots] capture spawn failed for ${containerId}/${messageId}:`, err.message);
+    });
+    child.on("close", (code) => {
+      if (code !== 0) {
         execFailed = true;
-        console.warn(`[snapshots] capture failed for ${containerId}/${messageId}:`, err.message);
+        console.warn(`[snapshots] capture failed for ${containerId}/${messageId} (exit ${code}):`, stderr);
       }
       writer.end();
     });
@@ -105,6 +136,7 @@ export async function restoreSnapshot(
   containerId: string,
   messageId: string
 ): Promise<void> {
+  assertSafeContainerId(containerId);
   const tarball = tarballPath(containerId, messageId);
   // Existence check; throws so caller can handle 410.
   await fs.access(tarball);
@@ -120,8 +152,20 @@ export async function restoreSnapshot(
     );
   }
   const projectDir = projectDirFor(containerId);
+  const resolvedProjectDir = path.resolve(projectDir);
+  // Use spawn with array args (no shell). Tar's `-C <dir>` confines the
+  // extract to that directory, but a malicious tarball with entries like
+  // `../../etc/passwd` would still escape. Pass --no-absolute-filenames and
+  // --no-anchored so the legacy GNU tar refuse-extract path is engaged.
   const cmd = "tar";
-  const args = ["xzf", "-", "-C", projectDir];
+  const args = [
+    "xzf",
+    "-",
+    "--no-absolute-filenames",
+    "--exclude=*../*",
+    "-C",
+    resolvedProjectDir,
+  ];
   const child = spawn(cmd, args, { stdio: ["pipe", "inherit", "inherit"] });
   const bytes = await fs.readFile(tarball);
   await new Promise<void>((resolve, reject) => {
@@ -133,9 +177,45 @@ export async function restoreSnapshot(
     child.stdin?.on("error", reject);
     child.stdin?.end(bytes);
   });
+  // Belt-and-suspenders post-check: even with tar's anti-escape flags, a
+  // crafted tarball could land files outside the project dir if a future
+  // toolchain change disables them. Walk the resulting tree and ensure no
+  // entry resolves to a path outside projectDir.
+  await assertNoEscape(containerId, resolvedProjectDir);
+}
+
+async function assertNoEscape(containerId: string, projectDir: string): Promise<void> {
+  const stack: string[] = [projectDir];
+  while (stack.length) {
+    const dir = stack.pop()!;
+    let entries: import("fs").Dirent[];
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      const resolved = path.resolve(full);
+      if (
+        resolved !== projectDir &&
+        !resolved.startsWith(projectDir + path.sep)
+      ) {
+        throw new Error(
+          `restore would have escaped projectDir: ${containerId} -> ${resolved}`
+        );
+      }
+      if (entry.isDirectory()) stack.push(full);
+    }
+  }
 }
 
 export async function listSnapshots(containerId: string): Promise<string[]> {
+  try {
+    assertSafeContainerId(containerId);
+  } catch {
+    return [];
+  }
   const dir = dirForContainer(containerId);
   try {
     const entries = await fs.readdir(dir);
@@ -151,6 +231,11 @@ export async function pruneSnapshots(
   containerId: string,
   keepLast = 20
 ): Promise<void> {
+  try {
+    assertSafeContainerId(containerId);
+  } catch {
+    return;
+  }
   const ids = (await listSnapshots(containerId)).sort();
   if (ids.length <= keepLast) return;
   const toDelete = ids.slice(0, ids.length - keepLast);
@@ -161,6 +246,11 @@ export async function deleteSnapshot(
   containerId: string,
   messageId: string
 ): Promise<void> {
+  try {
+    assertSafeContainerId(containerId);
+  } catch {
+    return;
+  }
   try {
     await fs.unlink(tarballPath(containerId, messageId));
   } catch {

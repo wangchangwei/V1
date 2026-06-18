@@ -3,11 +3,13 @@ import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
 
-// Mock docker exec BEFORE importing the module under test.
+// Mock docker exec and tar spawn BEFORE importing the module under test.
 const mockExec = vi.fn();
+const mockSpawn = vi.fn();
 vi.mock("node:child_process", () => ({
   exec: (cmd: string, cb: (err: Error | null, stdout: string, stderr: string) => void) =>
     mockExec(cmd, cb),
+  spawn: (cmd: string, args: string[], opts: any) => mockSpawn(cmd, args, opts),
 }));
 
 import {
@@ -30,49 +32,60 @@ beforeEach(async () => {
   __setSnapshotRootForTests(TMP_ROOT);
   __resetSnapshotsForTests();
   mockExec.mockReset();
+  mockSpawn.mockReset();
 });
 
 afterEach(async () => {
   await fs.rm(TMP_ROOT, { recursive: true, force: true });
 });
 
-// Helper: build a captureSnapshot mock that simulates the real exec/stream
-// pipeline. The mock writes emitted stdout data to the tarball path so
-// restoreSnapshot's fs.access succeeds. Returns the mock implementation so
-// each test can override individual fields.
-function captureMockSuccess(opts: {
-  expectedTarball: string;
-  payload?: string;
-  delayWrite?: number;
-} = { expectedTarball: "" }) {
-  return (cmd: string, cb: (e: any, stdout: string, stderr: string) => void) => {
-    const stdout: any = {
+// Build a child-process-shaped object that fires the events captureSnapshot
+// listens for. payload is the bytes that get streamed to the writer.
+function spawnMockChild(opts: { payload?: string; error?: Error; exitCode?: number } = {}) {
+  const child: any = {
+    stdout: {
       on: (event: string, fn: (data: Buffer) => void) => {
         if (event === "data" && opts.payload !== undefined) {
           fn(Buffer.from(opts.payload));
         }
       },
-    };
-    const stderr = { on: () => {} };
-    process.nextTick(async () => {
-      try {
-        if (opts.payload !== undefined) {
+    },
+    stderr: { on: () => {} },
+    on: (event: string, fn: (...args: any[]) => void) => {
+      if (event === "error" && opts.error) {
+        process.nextTick(() => fn(opts.error));
+      } else if (event === "close") {
+        process.nextTick(() => fn(opts.exitCode ?? 0));
+      }
+    },
+  };
+  return child;
+}
+
+// captureSnapshot now uses spawn("tar", [...args]). The mock implementation
+// records the args so tests can assert on flags, and emits the payload as
+// stdout data so the writer flushes a real file to disk.
+function captureMockSpawnSuccess(opts: { expectedTarball: string; payload?: string }) {
+  return (_cmd: string, _args: string[], _opts: any) => {
+    if (opts.payload !== undefined) {
+      process.nextTick(async () => {
+        try {
           await fs.mkdir(path.dirname(opts.expectedTarball), { recursive: true });
           await fs.writeFile(opts.expectedTarball, opts.payload);
+        } catch {
+          /* ignore */
         }
-      } finally {
-        cb(null, "ok", "");
-      }
-    });
-    return { stdout, stderr } as any;
+      });
+    }
+    return spawnMockChild({ payload: opts.payload, exitCode: 0 });
   };
 }
 
 describe("captureSnapshot", () => {
   it("writes a tarball under data/snapshots/{containerId}/{messageId}.tar.gz", async () => {
     const expectedTarball = path.join(TMP_ROOT, CID, `${MID}.tar.gz`);
-    mockExec.mockImplementation(
-      captureMockSuccess({ expectedTarball, payload: "TAR-GZ-BYTES" })
+    mockSpawn.mockImplementation(
+      captureMockSpawnSuccess({ expectedTarball, payload: "TAR-GZ-BYTES" })
     );
     const ok = await captureSnapshot(CID, MID);
     expect(ok).toBe(true);
@@ -80,26 +93,22 @@ describe("captureSnapshot", () => {
     expect(stat.isFile()).toBe(true);
   });
 
-  it("invokes docker with --exclude flags for build artifacts", async () => {
-    let capturedCmd = "";
-    mockExec.mockImplementation((cmd: string, cb: Function) => {
-      capturedCmd = cmd;
-      process.nextTick(() => cb(null, "", ""));
-      return {} as any;
+  it("invokes tar with --exclude flags for build artifacts", async () => {
+    let capturedArgs: string[] = [];
+    mockSpawn.mockImplementation((_cmd: string, args: string[]) => {
+      capturedArgs = args;
+      return spawnMockChild({ payload: "TAR-GZ-BYTES" });
     });
     const ok = await captureSnapshot(CID, MID);
     expect(ok).toBe(true);
-    expect(capturedCmd).toMatch(/--exclude=node_modules/);
-    expect(capturedCmd).toMatch(/--exclude=\.next/);
-    expect(capturedCmd).toMatch(/--exclude=\.git/);
-    expect(capturedCmd).toMatch(/--exclude=\.turbo/);
+    expect(capturedArgs).toContain("--exclude=node_modules");
+    expect(capturedArgs).toContain("--exclude=.next");
+    expect(capturedArgs).toContain("--exclude=.git");
+    expect(capturedArgs).toContain("--exclude=.turbo");
   });
 
-  it("returns false when the underlying exec fails", async () => {
-    mockExec.mockImplementation((cmd: string, cb: Function) => {
-      process.nextTick(() => cb(new Error("docker daemon down"), "", ""));
-      return { stdout: { on: () => {} }, stderr: { on: () => {} } } as any;
-    });
+  it("returns false when the underlying spawn fails", async () => {
+    mockSpawn.mockImplementation(() => spawnMockChild({ error: new Error("tar failed"), exitCode: 1 }));
     const ok = await captureSnapshot(CID, MID);
     expect(ok).toBe(false);
   });
@@ -108,8 +117,8 @@ describe("captureSnapshot", () => {
     // After captureSnapshot resolves, the tarball MUST be readable. This
     // proves the promise does not resolve before writer 'finish' fires.
     const expectedTarball = path.join(TMP_ROOT, CID, `${MID}.tar.gz`);
-    mockExec.mockImplementation(
-      captureMockSuccess({ expectedTarball, payload: "FAKE-TAR-CONTENT" })
+    mockSpawn.mockImplementation(
+      captureMockSpawnSuccess({ expectedTarball, payload: "FAKE-TAR-CONTENT" })
     );
     const ok = await captureSnapshot(CID, MID);
     expect(ok).toBe(true);
@@ -124,22 +133,20 @@ describe("restoreSnapshot", () => {
     const expectedTarball = path.join(TMP_ROOT, CID, `${MID}.tar.gz`);
     // Payload must be >= 1024 bytes to pass restoreSnapshot's size guard.
     const payload = "FAKE-TAR-CONTENT" + "x".repeat(1024);
-    mockExec.mockImplementation((cmd: string, cb: Function) => {
-      if (cmd.includes("tar czf")) {
-        return captureMockSuccess({ expectedTarball, payload })(cmd, cb);
-      }
-      if (cmd.includes("docker exec -i")) {
-        const stdinChunks: Buffer[] = [];
-        const stdin = {
-          write: (data: Buffer) => stdinChunks.push(data),
-          end: () => {},
-        };
-        process.nextTick(() => {
-          expect(Buffer.concat(stdinChunks).toString()).toBe(payload);
-          cb(null, "", "");
+    mockSpawn.mockImplementation((_cmd: string, _args: string[]) => {
+      // Capture path: emit payload so writer writes a real tarball.
+      if (_args.includes("czf")) {
+        process.nextTick(async () => {
+          await fs.mkdir(path.dirname(expectedTarball), { recursive: true });
+          await fs.writeFile(expectedTarball, payload);
         });
-        return { stdin } as any;
+        return spawnMockChild({ payload, exitCode: 0 });
       }
+      // Restore path: read stdin and emit.
+      return spawnMockChild({ exitCode: 0 });
+    });
+    mockExec.mockImplementation((cmd: string, cb: Function) => {
+      process.nextTick(() => cb(null, "", ""));
       return {} as any;
     });
     const ok = await captureSnapshot(CID, MID);
