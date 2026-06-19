@@ -172,3 +172,58 @@ describe("TurnBroadcaster — attach() initial flush", () => {
     expect(types).toEqual(["user"]);
   });
 });
+
+describe("TurnBroadcaster — finalize()", () => {
+  it("finalize('done') writes a done chunk, sets status, and triggers onFinalize", () => {
+    let finalized = false;
+    const b = new TurnBroadcaster(CID, userMsg, "asst-1", () => {
+      finalized = true;
+    });
+    const res = makeFakeRes();
+    b.attach(res);
+
+    b.finalize("done");
+
+    const last = JSON.parse(res.writes[res.writes.length - 1]!.replace(/^data: /, "").replace(/\n\n$/, ""));
+    expect(last.type).toBe("done");
+    expect(b.getState().status).toBe("done");
+    expect(b.getState().finishedAt).toBeTruthy();
+    expect(finalized).toBe(true);
+  });
+
+  it("finalize('error', {message}) writes an error chunk and sets state.error", () => {
+    const b = new TurnBroadcaster(CID, userMsg, "asst-1", () => {});
+    const res = makeFakeRes();
+    b.attach(res);
+
+    b.finalize("error", { message: "pi crashed" });
+
+    const last = JSON.parse(res.writes[res.writes.length - 1]!.replace(/^data: /, "").replace(/\n\n$/, ""));
+    expect(last.type).toBe("error");
+    expect(last.data.error).toBe("pi crashed");
+    expect(b.getState().status).toBe("error");
+    expect(b.getState().error?.message).toBe("pi crashed");
+  });
+
+  it("finalize is idempotent — second call is a no-op", () => {
+    let count = 0;
+    const b = new TurnBroadcaster(CID, userMsg, "asst-1", () => {
+      count += 1;
+    });
+    b.finalize("done");
+    b.finalize("error", { message: "x" });
+    expect(count).toBe(1);
+  });
+
+  it("attach after finalize still flushes state and the final chunk", () => {
+    const b = new TurnBroadcaster(CID, userMsg, "asst-1", () => {});
+    b.emit({ type: "assistant", data: { id: "asst-1", content: "Hi" } });
+    b.finalize("done");
+
+    const res = makeFakeRes();
+    b.attach(res);
+
+    const types = res.writes.map((w) => JSON.parse(w.replace(/^data: /, "").replace(/\n\n$/, "")).type);
+    expect(types).toEqual(["user", "assistant", "done"]);
+  });
+});

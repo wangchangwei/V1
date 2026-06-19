@@ -66,7 +66,8 @@ export class TurnBroadcaster {
     // Replay enough state for the new subscriber to render the same view as
     // long-running clients. Order: user message → current assistant snapshot
     // (carrying partialText + toolCalls) → individual tool_call/tool_result
-    // chunks (so the chat page's tool-call reducer path also runs).
+    // chunks (so the chat page's tool-call reducer path also runs) → final
+    // chunk (if the turn has already finished).
     const { userMsg, assistantMsgId, partialText, toolCalls } = this.state;
 
     safeWrite(res, { type: "user", data: userMsg });
@@ -90,6 +91,12 @@ export class TurnBroadcaster {
         type: "tool_result",
         data: { id: tc.id, ok: tc.ok, result: tc.result },
       });
+    }
+
+    // If the turn has already finalized, also replay the final chunk so the
+    // late subscriber sees the terminal state.
+    if (this.state.status !== "running") {
+      safeWrite(res, this.buildFinalChunk());
     }
   }
 
@@ -133,8 +140,30 @@ export class TurnBroadcaster {
     }
   }
 
-  finalize(_status: "done" | "error", _error?: { message: string }): void {
-    throw new Error("not implemented");
+  finalize(status: "done" | "error", error?: { message: string }): void {
+    if (this.state.status !== "running") return; // idempotent
+
+    this.state.status = status;
+    this.state.finishedAt = new Date().toISOString();
+    if (error) this.state.error = error;
+
+    // Push the final chunk to all subscribers.
+    const finalChunk = this.buildFinalChunk();
+
+    for (const res of this.subscribers) {
+      safeWrite(res, finalChunk);
+    }
+
+    // Notify caller (registry) so it can remove us.
+    this.onFinalize();
+  }
+
+  private buildFinalChunk(): any {
+    if (this.state.status === "done") {
+      return { type: "done", data: { id: this.state.assistantMsgId } };
+    }
+    const message = this.state.error?.message ?? "turn failed";
+    return { type: "error", data: { error: message } };
   }
 
   getState(): BroadcasterState {
@@ -142,7 +171,7 @@ export class TurnBroadcaster {
   }
 
   abort(): void {
-    // Wired in Task 4 (no-op for now).
+    this.finalize("error", { message: "aborted" });
   }
 }
 
