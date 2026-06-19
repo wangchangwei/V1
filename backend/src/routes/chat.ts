@@ -132,6 +132,27 @@ router.get("/:containerId/messages", async (req: Request, res: Response) => {
   }
 });
 
+// GET /chat/:containerId/turn-status — report whether a turn is in-flight and,
+// if so, the partial response captured so far. Used by the frontend on page
+// reload to resume rendering the streaming answer instead of dropping it.
+router.get("/:containerId/turn-status", async (req: Request, res: Response) => {
+  const containerId = req.params.containerId as string;
+
+  try {
+    const session = getOrCreateChatSession(containerId);
+    const turn = session.inProgressTurn;
+    res.json({
+      processing: !!turn,
+      inProgressTurn: turn ?? undefined,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+});
+
 // PATCH /chat/:containerId/messages/:messageId
 // Edit a past user message and regenerate from that point forward.
 // Acquires withProjectLock to serialize against in-flight POST /messages.
@@ -271,6 +292,16 @@ async function* runChatTurn(
   let finalContent = "";
   let seenDone = false;
 
+  // Track this turn as in-flight so a page reload can resume rendering the
+  // partial response. Cleared on done/error/throw below.
+  session.inProgressTurn = {
+    userMsgId: userMsg.id,
+    assistantMsgId: assistantId,
+    partialText: "",
+    toolCalls: allToolCalls,
+    startedAt: new Date().toISOString(),
+  };
+
   try {
     for await (const chunk of piChatStream(
       containerId,
@@ -295,11 +326,17 @@ async function* runChatTurn(
           // Full chunk at message_end: capture finalContent but do NOT yield
           // (already rendered via delta chunks).
           finalContent = extractAssistantText(chunk.data);
+          if (session.inProgressTurn) {
+            session.inProgressTurn.partialText = finalContent;
+          }
           continue;
         }
         const text = extractAssistantText(chunk.data);
         if (text) {
           finalContent += text;
+        }
+        if (session.inProgressTurn) {
+          session.inProgressTurn.partialText = finalContent;
         }
         // Normalize content to string and yield to frontend.
         yield { ...chunk, data: { ...chunk.data, id: assistantId, role: "assistant", content: finalContent } };
@@ -328,6 +365,7 @@ async function* runChatTurn(
         }
         yield chunk;
       } else if (chunk.type === "error") {
+        session.inProgressTurn = undefined;
         yield { type: "error", data: chunk.data };
         return;
       } else {
@@ -341,6 +379,7 @@ async function* runChatTurn(
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
     console.error("[chat] pi stream failed:", err.message);
+    session.inProgressTurn = undefined;
     yield { type: "error", data: { error: err.message } };
     return;
   }
@@ -354,6 +393,9 @@ async function* runChatTurn(
   };
   session.messages.push(assistantMsg);
   session.updatedAt = new Date().toISOString();
+  // Turn complete: clear in-flight tracking so future reloads see the
+  // finished message in chat history rather than a "still processing" state.
+  session.inProgressTurn = undefined;
 
   if (!seenDone) {
     yield { type: "assistant", data: assistantMsg };

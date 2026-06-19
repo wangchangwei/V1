@@ -26,6 +26,7 @@ import {
   deployToVercel,
   getChatHistory,
   getProjectModel,
+  getTurnStatus,
   Message,
   patchChatMessageStream,
   sendChatMessage,
@@ -186,6 +187,36 @@ export const WorkspaceDashboard = ({
             }
           } else {
             setMessages(response.messages);
+
+            // If a turn was in-flight when the page loaded (e.g. user refreshed
+            // mid-stream), rehydrate the partial response so the chat keeps
+            // showing "pi is working…" plus whatever text/tool calls have
+            // landed so far. Without this, reload mid-stream silently drops
+            // the response until the next user message.
+            try {
+              const status = await getTurnStatus(containerId);
+              if (status.processing && status.inProgressTurn) {
+                const turn = status.inProgressTurn;
+                const partialAssistant: Message = {
+                  id: turn.assistantMsgId,
+                  role: "assistant",
+                  content: turn.partialText,
+                  timestamp: turn.startedAt,
+                  toolCalls: turn.toolCalls,
+                };
+                setMessages((prev) => {
+                  if (prev.some((m) => m.id === partialAssistant.id)) {
+                    return prev;
+                  }
+                  return [...prev, partialAssistant];
+                });
+                setStreamingMessageId(partialAssistant.id);
+                streamingMessageIdRef.current = partialAssistant.id;
+                setIsLoading(true);
+              }
+            } catch (err) {
+              console.error("Failed to load turn status:", err);
+            }
           }
         }
       } catch (error) {

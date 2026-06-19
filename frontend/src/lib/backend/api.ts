@@ -298,6 +298,12 @@ export async function getChatHistory(
   return response;
 }
 
+export async function getTurnStatus(
+  containerId: string
+): Promise<{ processing: boolean; inProgressTurn?: { userMsgId: string; assistantMsgId: string; partialText: string; toolCalls: ToolCall[]; startedAt: string } }> {
+  return fetchApi(`/chat/${containerId}/turn-status`);
+}
+
 export async function enrichPrompt(
   prompt: string,
   template: string
