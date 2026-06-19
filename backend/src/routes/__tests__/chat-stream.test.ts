@@ -105,7 +105,7 @@ describe("POST /chat/:containerId/messages", () => {
 
       expect(res.body.success).toBe(true);
       expect(res.body.userMessage.role).toBe("user");
-      expect(res.body.assistantMessage.role).toBe("assistant");
+      expect(res.body.assistantMessageId).toBeTruthy();
     });
 
     it("calls piChatStream with containerId and messages", async () => {
@@ -155,7 +155,7 @@ describe("POST /chat/:containerId/messages", () => {
       expect(mocks.captureSnapshot).toHaveBeenCalledWith(CID, expect.any(String));
     });
 
-    it("returns 500 when piChatStream throws an error", async () => {
+    it("returns 200 immediately even if piChatStream throws (error is finalized via broadcaster)", async () => {
       mocks.piChatStream.mockImplementation(async function* () {
         throw new Error("pi container crashed");
       });
@@ -163,10 +163,9 @@ describe("POST /chat/:containerId/messages", () => {
       const res = await request(app)
         .post(`/chat/${CID}/messages`)
         .send({ message: "hello" })
-        .expect(500);
+        .expect(200);
 
-      expect(res.body.success).toBe(false);
-      expect(res.body.error).toBe("pi container crashed");
+      expect(res.body.success).toBe(true);
     });
 
     it("appends messages to session history", async () => {
@@ -192,64 +191,6 @@ describe("POST /chat/:containerId/messages", () => {
     });
   });
 
-  describe("streaming mode (stream: true)", () => {
-    it("sets Content-Type to text/event-stream", async () => {
-      mocks.piChatStream.mockImplementation(async function* () {
-        yield { type: "done", data: {} };
-      });
-
-      const res = await request(app)
-        .post(`/chat/${CID}/messages`)
-        .send({ message: "hello", stream: true })
-        .expect(200);
-
-      expect(res.headers["content-type"]).toContain("text/event-stream");
-    });
-
-    it("streams user, assistant, and done events as SSE", async () => {
-      mocks.piChatStream.mockImplementation(async function* () {
-        yield { type: "user", data: { id: "u1", role: "user", content: "hi", timestamp: "" } };
-        yield { type: "done", data: { id: "a1", role: "assistant", content: "hi!", timestamp: "" } };
-      });
-
-      const res = await request(app)
-        .post(`/chat/${CID}/messages`)
-        .send({ message: "hi", stream: true })
-        .expect(200);
-
-      const text = res.text;
-      expect(text).toContain('"type":"user"');
-      expect(text).toContain('"type":"done"');
-      expect(text).toContain("[DONE]");
-    });
-
-    it("writes a keepalive comment every 15s", async () => {
-      let yielded = false;
-      mocks.piChatStream.mockImplementation(async function* () {
-        yielded = true;
-        yield { type: "done", data: {} };
-      });
-
-      const res = await request(app)
-        .post(`/chat/${CID}/messages`)
-        .send({ message: "hi", stream: true })
-        .expect(200);
-
-      expect(yielded).toBe(true);
-      expect(res.headers["content-type"]).toContain("text/event-stream");
-    });
-
-    it("returns 503 when pi container unavailable in stream mode", async () => {
-      mocks.hasPiContainer.mockReturnValue(false);
-
-      const res = await request(app)
-        .post(`/chat/${CID}/messages`)
-        .send({ message: "hello", stream: true })
-        .expect(503);
-
-      expect(res.body.success).toBe(false);
-    });
-  });
 });
 
 // ---------------------------------------------------------------------------
