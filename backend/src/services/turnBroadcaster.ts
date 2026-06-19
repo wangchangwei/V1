@@ -29,6 +29,15 @@ interface SubscriberRes {
   end?: () => void;
 }
 
+function safeWrite(res: SubscriberRes, chunk: any): void {
+  try {
+    res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+  } catch {
+    // Ignore write failures during initial flush; the subscriber's first
+    // read loop will hit onerror and detach.
+  }
+}
+
 export class TurnBroadcaster {
   private subscribers: Set<SubscriberRes> = new Set();
   private state: BroadcasterState;
@@ -52,8 +61,36 @@ export class TurnBroadcaster {
   }
 
   attach(res: SubscriberRes): void {
-    // Initial flush is added in Task 3; for now just register.
     this.subscribers.add(res);
+
+    // Replay enough state for the new subscriber to render the same view as
+    // long-running clients. Order: user message → current assistant snapshot
+    // (carrying partialText + toolCalls) → individual tool_call/tool_result
+    // chunks (so the chat page's tool-call reducer path also runs).
+    const { userMsg, assistantMsgId, partialText, toolCalls } = this.state;
+
+    safeWrite(res, { type: "user", data: userMsg });
+
+    if (partialText || toolCalls.length > 0) {
+      safeWrite(res, {
+        type: "assistant",
+        data: {
+          id: assistantMsgId,
+          role: "assistant",
+          content: partialText,
+          timestamp: this.state.startedAt,
+          toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        },
+      });
+    }
+
+    for (const tc of toolCalls) {
+      safeWrite(res, { type: "tool_call", data: { id: tc.id, name: tc.name, args: tc.args } });
+      safeWrite(res, {
+        type: "tool_result",
+        data: { id: tc.id, ok: tc.ok, result: tc.result },
+      });
+    }
   }
 
   detach(res: SubscriberRes): void {

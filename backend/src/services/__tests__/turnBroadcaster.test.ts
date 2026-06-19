@@ -78,10 +78,14 @@ describe("TurnBroadcaster — emit()", () => {
     b.attach(a);
     b.attach(c);
 
+    const writesBefore = a.writes.length;
     b.emit({ type: "assistant", data: { id: "asst-1", content: "hi" } });
 
-    expect(a.writes).toEqual([`data: ${JSON.stringify({ type: "assistant", data: { id: "asst-1", content: "hi" } })}\n\n`]);
-    expect(c.writes).toEqual(a.writes);
+    // attach() flushes a user chunk, so the emit appends one more write.
+    const newA = a.writes.slice(writesBefore);
+    const newC = c.writes.slice(writesBefore);
+    expect(newA).toEqual([`data: ${JSON.stringify({ type: "assistant", data: { id: "asst-1", content: "hi" } })}\n\n`]);
+    expect(newC).toEqual(newA);
   });
 
   it("grows state.partialText from assistant deltas", () => {
@@ -126,7 +130,45 @@ describe("TurnBroadcaster — emit()", () => {
     b.attach(broken);
     b.attach(good);
 
+    const writesBefore = good.writes.length;
     expect(() => b.emit({ type: "assistant", data: { id: "asst-1", content: "hi" } })).not.toThrow();
-    expect(good.writes.length).toBe(1);
+    // attach() flushed the user chunk; emit() appends one more.
+    expect(good.writes.length - writesBefore).toBe(1);
+  });
+});
+
+describe("TurnBroadcaster — attach() initial flush", () => {
+  it("flushes user + assistant(partialText) + toolCalls to a new subscriber", () => {
+    const b = new TurnBroadcaster(CID, userMsg, "asst-1", () => {});
+    b.emit({ type: "assistant", data: { id: "asst-1", content: "Hello" } });
+    b.emit({ type: "tool_call", data: { id: "tc-1", name: "read", args: "x" } });
+    b.emit({ type: "tool_result", data: { id: "tc-1", ok: true, result: "ok" } });
+
+    const newRes = makeFakeRes();
+    b.attach(newRes);
+
+    // Expect: user chunk, assistant chunk (with current partialText + toolCalls),
+    // then re-emit of the tool_call + tool_result (in order).
+    const types = newRes.writes.map((w) => JSON.parse(w.replace(/^data: /, "").replace(/\n\n$/, "")).type);
+    expect(types).toEqual([
+      "user",
+      "assistant",
+      "tool_call",
+      "tool_result",
+    ]);
+
+    const assistant = JSON.parse(newRes.writes[1]!.replace(/^data: /, "").replace(/\n\n$/, ""));
+    expect(assistant.data.content).toBe("Hello");
+    expect(assistant.data.id).toBe("asst-1");
+  });
+
+  it("does not re-emit if no state has accumulated (only the user chunk)", () => {
+    const b = new TurnBroadcaster(CID, userMsg, "asst-1", () => {});
+
+    const res = makeFakeRes();
+    b.attach(res);
+
+    const types = res.writes.map((w) => JSON.parse(w.replace(/^data: /, "").replace(/\n\n$/, "")).type);
+    expect(types).toEqual(["user"]);
   });
 });
