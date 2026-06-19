@@ -261,10 +261,21 @@ async function* runChatTurn(
       sessionToPiMessages(session),
       req?.signal
     )) {
-      if (chunk.type === "assistant") {
+      if (chunk.type === "user") {
+        // Normalize user content to string: pi may emit [{type:"text",text:"..."}]
+        const content = chunk.data?.content;
+        if (Array.isArray(content)) {
+          const text = content.map((c: any) => c.text ?? "").join("");
+          yield { ...chunk, data: { ...chunk.data, content: text } };
+        } else {
+          yield chunk;
+        }
+      } else if (chunk.type === "assistant") {
         // pi emits delta-style assistant chunks; concatenate text deltas.
         const text = extractAssistantText(chunk.data);
         if (text) finalContent += text;
+        // Normalize content to string and yield to frontend.
+        yield { ...chunk, data: { ...chunk.data, content: text } };
       } else if (chunk.type === "tool_call") {
         const record: ToolCallRecord = {
           id: chunk.data.id,
@@ -283,8 +294,9 @@ async function* runChatTurn(
       } else if (chunk.type === "error") {
         yield { type: "error", data: chunk.data };
         return;
+      } else {
+        yield chunk;
       }
-      yield chunk;
       if (chunk.type === "done") {
         seenDone = true;
         break;
@@ -325,7 +337,11 @@ async function runChatTurnNonStreaming(
 
   for await (const chunk of runChatTurn(containerId, userMessage, attachments, undefined)) {
     if (chunk.type === "user") userMsg = chunk.data;
-    if (chunk.type === "done") assistantMsg = chunk.data;
+    // 'done' has empty data {} — capture the last 'assistant' chunk instead.
+    if (chunk.type === "assistant") assistantMsg = chunk.data;
+    if (chunk.type === "done") {
+      // assistantMsg was already set by the last 'assistant' chunk above.
+    }
     if (chunk.type === "error") {
       throw new Error(chunk.data?.error ?? "pi stream error");
     }
