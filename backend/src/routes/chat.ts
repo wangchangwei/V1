@@ -319,7 +319,12 @@ async function* runChatTurn(
         const last = allToolCalls.find((tc) => tc.id === chunk.data.id);
         if (last) {
           last.ok = !!chunk.data.ok;
-          last.result = chunk.data.result ?? "";
+          // Serialize result to string for storage. result may be a structured
+          // object like { content: [...] } from pi, or a plain string.
+          last.result =
+            typeof chunk.data.result === "string"
+              ? chunk.data.result
+              : JSON.stringify(chunk.data.result);
         }
         yield chunk;
       } else if (chunk.type === "error") {
