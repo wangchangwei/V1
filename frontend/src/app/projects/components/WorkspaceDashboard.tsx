@@ -28,9 +28,7 @@ import {
   getProjectModel,
   getTurnStatus,
   Message,
-  patchChatMessageStream,
   sendChatMessage,
-  sendChatMessageStream,
   setProjectModel,
   type ModelInfo,
 } from "../../../lib/backend/api";
@@ -66,16 +64,7 @@ export const WorkspaceDashboard = ({
     null
   );
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
-  const [sidebarWidth, setSidebarWidth] = useState<number>(384);
-
-  // Keep the assistant sidebar at 1/3 of the viewport width.
-  useEffect(() => {
-    const sync = () =>
-      setSidebarWidth(Math.round(window.innerWidth / 3));
-    sync();
-    window.addEventListener("resize", sync);
-    return () => window.removeEventListener("resize", sync);
-  }, []);
+  const [sidebarWidth, setSidebarWidth] = useState<number | string>("50%");
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -668,11 +657,11 @@ export const WorkspaceDashboard = ({
   const handleSidebarResize = (e: React.MouseEvent) => {
     e.preventDefault();
     const startX = e.clientX;
-    const startWidth = sidebarWidth;
+    const startWidth = sidebarRef.current?.offsetWidth || window.innerWidth / 2;
 
     const onMouseMove = (moveEvent: MouseEvent) => {
       const delta = moveEvent.clientX - startX;
-      const max = Math.max(600, Math.round(window.innerWidth * 0.6));
+      const max = Math.max(600, Math.round(window.innerWidth * 0.8));
       const newWidth = Math.min(Math.max(startWidth + delta, 240), max);
       setSidebarWidth(newWidth);
     };
@@ -833,12 +822,11 @@ export const WorkspaceDashboard = ({
           src="/v1-logo.png"
           alt="Assistant Avatar"
         />
-        <span className="text-sm font-medium text-white/90">Assistant</span>
+        <span className="text-sm font-medium text-[#1a1a1a]">Assistant</span>
       </div>
-      <div className="rounded-xl px-4 py-3 text-sm leading-relaxed bg-gray-700/60 backdrop-blur-md border border-gray-600/40 text-gray-100 w-full shadow-sm relative">
-        <div className="absolute inset-0 bg-gradient-to-br from-gray-600/10 via-transparent to-gray-700/10 rounded-xl" />
+      <div className="rounded-xl px-4 py-3 text-sm leading-relaxed bg-[#faf9f8] border border-[#e5e5e5] text-[#1a1a1a] w-full shadow-sm relative">
         <div className="relative z-10">
-          <div className="prose prose-sm prose-invert max-w-none [&_h2]:text-white [&_h3]:text-white [&_h4]:text-white [&_strong]:text-white">
+          <div className="prose prose-sm max-w-none [&_h2]:text-[#1a1a1a] [&_h3]:text-[#1a1a1a] [&_h4]:text-[#1a1a1a] [&_strong]:text-[#1a1a1a]">
             <p className="mb-2">
               👋 Welcome to your Next.js project! I'm here to help you build,
               modify, and deploy your application.
@@ -862,42 +850,39 @@ export const WorkspaceDashboard = ({
   );
 
   return (
-    <div className="flex h-screen bg-black text-white relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-gray-900/50 via-black to-black" />
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-white/5 via-transparent to-transparent" />
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,_var(--tw-gradient-stops))] from-blue-900/10 via-transparent to-transparent" />
+    <div className="flex h-screen bg-[#faf9f8] text-[#1a1a1a] relative overflow-hidden">
+      <div className="absolute inset-0 bg-[#faf9f8]" />
 
       <div className="flex flex-col w-full relative z-10">
-        <div className="h-14 bg-black/70 backdrop-blur-xl border-b border-gray-800/50 flex items-center justify-between px-4 relative">
-          <div className="absolute inset-0 bg-gradient-to-r from-gray-700/5 via-transparent to-gray-700/5" />
+        <div className="h-14 bg-white/80 backdrop-blur-xl border-b border-[#e5e5e5] flex items-center justify-between px-4 relative">
 
           <div className="flex items-center gap-3 relative z-10">
             <Link
               href="/"
-              className="flex items-center gap-3 text-white/90 hover:text-white transition-colors group"
+              className="flex items-center gap-3 text-[#1a1a1a] hover:opacity-80 transition-colors group"
             >
               <span
-                className="text-lg bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent"
+                className="text-lg text-[#1a1a1a] font-semibold"
                 style={{ fontFamily: "XSpace, monospace" }}
               >
                 changwei
               </span>
             </Link>
 
-            <div className="h-6 w-px bg-gray-700/50 mx-2" />
+            <div className="h-6 w-px bg-[#e5e5e5] mx-2" />
 
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="flex items-center gap-2 text-white/70 hover:text-white transition-colors group"
+              className="flex items-center gap-2 text-[#666666] hover:text-[#1a1a1a] transition-colors group"
             >
-              <div className="w-7 h-7 bg-gray-800/60 backdrop-blur-sm border border-gray-700/50 rounded-lg flex items-center justify-center group-hover:bg-gray-700/60 group-hover:border-gray-600/50 transition-all shadow-sm">
+              <div className="w-7 h-7 bg-white backdrop-blur-sm border border-[#e5e5e5] rounded-lg flex items-center justify-center group-hover:bg-[#faf9f8] group-hover:border-[#cccccc] transition-all shadow-sm">
                 <Layers className="w-3.5 h-3.5" />
               </div>
               <div className="hidden sm:flex flex-col">
                 <span className="text-sm font-medium">
                   {containerId.slice(0, 8)}
                 </span>
-                <span className="text-xs text-white/50">Next.js Project</span>
+                <span className="text-xs text-[#888888]">Next.js Project</span>
               </div>
               {sidebarOpen ? (
                 <ChevronLeft className="w-4 h-4" />
@@ -907,16 +892,16 @@ export const WorkspaceDashboard = ({
             </button>
           </div>
 
-          <div className="hidden md:flex items-center gap-2 text-sm text-white/60 relative z-10">
+          <div className="hidden md:flex items-center gap-2 text-sm text-[#888888] relative z-10">
             <Link
               href="/"
-              className="hover:text-white transition-colors flex items-center gap-1"
+              className="hover:text-[#1a1a1a] transition-colors flex items-center gap-1"
             >
               <Home className="w-3.5 h-3.5" />
               <span>Projects</span>
             </Link>
             <span>/</span>
-            <span className="text-white font-medium">
+            <span className="text-[#1a1a1a] font-medium">
               {containerId.slice(0, 8)}
             </span>
           </div>
@@ -925,7 +910,7 @@ export const WorkspaceDashboard = ({
             {viewMode === "preview" && (
               <button
                 onClick={() => setIsDesktopView(!isDesktopView)}
-                className="p-1.5 text-white/60 hover:text-white hover:bg-white/5 rounded-md transition-all backdrop-blur-sm"
+                className="p-1.5 text-[#666666] hover:text-[#1a1a1a] hover:bg-[#faf9f8] rounded-md transition-all"
                 title={
                   isDesktopView
                     ? "Switch to mobile view"
@@ -940,13 +925,13 @@ export const WorkspaceDashboard = ({
               </button>
             )}
 
-            <div className="flex items-center gap-0.5 bg-gray-800/40 backdrop-blur-md rounded-lg p-0.5 border border-gray-700/40">
+            <div className="flex items-center gap-0.5 bg-white rounded-lg p-0.5 border border-[#e5e5e5] shadow-sm">
               <button
                 onClick={() => setViewMode("preview")}
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all ${
                   viewMode === "preview"
-                    ? "bg-white/10 text-white shadow-sm backdrop-blur-sm"
-                    : "text-white/60 hover:text-white/80 hover:bg-white/5"
+                    ? "bg-[#faf9f8] text-[#1a1a1a] shadow-sm"
+                    : "text-[#666666] hover:text-[#1a1a1a] hover:bg-[#f1f0ef]"
                 }`}
               >
                 <Eye className="w-3.5 h-3.5" />
@@ -956,8 +941,8 @@ export const WorkspaceDashboard = ({
                 onClick={() => setViewMode("editor")}
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all ${
                   viewMode === "editor"
-                    ? "bg-white/10 text-white shadow-sm backdrop-blur-sm"
-                    : "text-white/60 hover:text-white/80 hover:bg-white/5"
+                    ? "bg-[#faf9f8] text-[#1a1a1a] shadow-sm"
+                    : "text-[#666666] hover:text-[#1a1a1a] hover:bg-[#f1f0ef]"
                 }`}
               >
                 <Code2 className="w-3.5 h-3.5" />
@@ -965,11 +950,11 @@ export const WorkspaceDashboard = ({
               </button>
             </div>
 
-            <div className="h-4 w-px bg-gray-700/40 mx-1" />
+            <div className="h-4 w-px bg-[#e5e5e5] mx-1" />
 
             <button
               onClick={handleRefresh}
-              className="p-1.5 text-white/60 hover:text-white hover:bg-white/5 rounded-md transition-all backdrop-blur-sm"
+              className="p-1.5 text-[#666666] hover:text-[#1a1a1a] hover:bg-[#faf9f8] rounded-md transition-all"
               disabled={!containerUrl}
               title="Refresh preview"
             >
@@ -978,7 +963,7 @@ export const WorkspaceDashboard = ({
 
             <button
               onClick={handleExternalLink}
-              className="p-1.5 text-white/60 hover:text-white hover:bg-white/5 rounded-md transition-all backdrop-blur-sm"
+              className="p-1.5 text-[#666666] hover:text-[#1a1a1a] hover:bg-[#faf9f8] rounded-md transition-all"
               disabled={!containerUrl}
               title="Open in new tab"
             >
@@ -987,19 +972,19 @@ export const WorkspaceDashboard = ({
 
             <button
               onClick={() => router.push(`/projects/${containerId}/settings`)}
-              className="p-1.5 text-white/60 hover:text-white hover:bg-white/5 rounded-md transition-all backdrop-blur-sm"
+              className="p-1.5 text-[#666666] hover:text-[#1a1a1a] hover:bg-[#faf9f8] rounded-md transition-all"
               title="Project settings"
               data-testid="open-settings-gear"
             >
               <Settings className="w-3.5 h-3.5" />
             </button>
 
-            <div className="h-4 w-px bg-gray-700/40 mx-1" />
+            <div className="h-4 w-px bg-[#e5e5e5] mx-1" />
 
             <button
               onClick={handleExportCode}
               disabled={isExporting}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-800/40 hover:bg-gray-700/50 disabled:bg-gray-800/20 text-white/90 hover:text-white disabled:text-white/50 rounded-md text-xs font-medium transition-all border border-gray-700/40 hover:border-gray-600/50 backdrop-blur-md shadow-sm"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-[#faf9f8] disabled:bg-[#f1f0ef] text-[#1a1a1a] disabled:text-[#888888] rounded-md text-xs font-medium transition-all border border-[#e5e5e5] shadow-sm"
               title="Export project as ZIP"
             >
               {isExporting ? (
@@ -1012,7 +997,7 @@ export const WorkspaceDashboard = ({
 
             <button
               onClick={() => setShowDeployModal(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white text-black hover:bg-gray-100 rounded-md text-xs font-medium transition-all shadow-sm hover:shadow-lg"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#1a1a1a] text-white hover:bg-[#333333] rounded-md text-xs font-medium transition-all shadow-sm"
             >
               <Globe className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Deploy</span>
@@ -1025,12 +1010,11 @@ export const WorkspaceDashboard = ({
             <div
               ref={sidebarRef}
               style={{ width: sidebarWidth }}
-              className="bg-black/60 backdrop-blur-xl border-r border-gray-800/50 flex flex-col relative shrink-0"
+              className="bg-white border-r border-[#e5e5e5] flex flex-col relative shrink-0"
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
             >
-              <div className="absolute inset-0 bg-gradient-to-b from-gray-700/10 via-gray-800/5 to-gray-700/10" />
               {/* Resize handle */}
               <div
                 onMouseDown={handleSidebarResize}
@@ -1054,21 +1038,11 @@ export const WorkspaceDashboard = ({
                 </div>
               )}
 
-              <div className="flex items-center gap-3 h-12 px-4 border-b border-gray-800/30 relative z-10">
-                <Terminal className="w-4 h-4 text-white/70" />
-                <span className="text-sm font-medium text-white/90">
+              <div className="flex items-center gap-3 h-12 px-4 border-b border-[#e5e5e5] relative z-10 bg-[#faf9f8]">
+                <Terminal className="w-4 h-4 text-[#888888]" />
+                <span className="text-sm font-medium text-[#1a1a1a]">
                   AI Assistant
                 </span>
-                <div className="ml-auto">
-                  {currentModel !== null && (
-                    <ModelSelect
-                      models={availableModels}
-                      value={currentModel}
-                      disabled={isLoading || isRegenerating}
-                      onChange={handleModelChange}
-                    />
-                  )}
-                </div>
               </div>
 
               <div className="flex-1 overflow-y-auto p-4 custom-scrollbar relative z-10">
@@ -1093,12 +1067,12 @@ export const WorkspaceDashboard = ({
                   {isLoading && !streamingMessageId && (
                     <div className="flex items-start">
                       <div className="flex items-center gap-2 mb-2">
-                        <div className="w-4 h-4 bg-gradient-to-br from-blue-500 to-purple-500 rounded" />
-                        <span className="text-sm font-medium">Assistant</span>
+                        <div className="w-4 h-4 bg-[#e5e5e5] rounded" />
+                        <span className="text-sm font-medium text-[#1a1a1a]">Assistant</span>
                       </div>
-                      <div className="max-w-[80%] rounded-xl px-3 py-3 text-sm leading-relaxed bg-gray-800/60 backdrop-blur-md text-gray-100 ml-2 border border-gray-700/40 shadow-sm">
-                        <div className="flex items-center gap-2">
-                          <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                      <div className="max-w-[80%] rounded-xl px-3 py-3 text-sm leading-relaxed bg-[#faf9f8] text-[#1a1a1a] ml-2 border border-[#e5e5e5] shadow-sm">
+                        <div className="flex items-center gap-2 text-[#666666]">
+                          <div className="w-4 h-4 border-2 border-[#888888] border-t-transparent rounded-full animate-spin" />
                           <span>Thinking...</span>
                         </div>
                       </div>
@@ -1108,7 +1082,7 @@ export const WorkspaceDashboard = ({
                 </div>
               </div>
 
-              <div className="border-t border-gray-800/30 relative z-10">
+              <div className="border-t border-[#e5e5e5] relative z-10 bg-white">
                 <ChatInput
                   inputValue={inputValue}
                   setInputValue={setInputValue}
@@ -1118,17 +1092,18 @@ export const WorkspaceDashboard = ({
                   disabled={isLoading}
                   pendingFiles={pendingFiles}
                   onRemovePendingFile={removePendingFile}
+                  models={availableModels}
+                  modelValue={currentModel ?? undefined}
+                  onModelChange={handleModelChange}
                 />
               </div>
             </div>
           )}
 
-          <div className="flex-1 bg-black relative">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,_rgba(148,163,184,0.15)_1px,_transparent_0)] bg-[length:32px_32px] opacity-5" />
-
+          <div className="flex-1 bg-[#faf9f8] relative">
             {viewMode === "preview" ? (
               <div className="h-full p-6 relative z-10">
-                <div className="h-full bg-gray-900/40 backdrop-blur-sm rounded-xl border border-gray-800/40 overflow-hidden shadow-2xl shadow-black/20">
+                <div className="h-full bg-white rounded-xl border border-[#e5e5e5] overflow-hidden shadow-sm">
                   <LivePreview
                     containerId={containerId}
                     isDesktopView={isDesktopView}
@@ -1145,10 +1120,10 @@ export const WorkspaceDashboard = ({
       </div>
 
       {showDeployModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-gray-800 border border-gray-600/40 rounded-xl shadow-2xl w-full max-w-md p-6">
-            <h3 className="text-white font-semibold text-lg mb-1">Deploy to Vercel</h3>
-            <p className="text-gray-400 text-sm mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
+          <div className="bg-white border border-[#e5e5e5] rounded-xl shadow-md w-full max-w-md p-6">
+            <h3 className="text-[#1a1a1a] font-semibold text-lg mb-1">Deploy to Vercel</h3>
+            <p className="text-[#666666] text-sm mb-4">
               Enter your Vercel token to deploy this project.
             </p>
             {deployUrl ? (
@@ -1181,19 +1156,19 @@ export const WorkspaceDashboard = ({
                   onKeyDown={(e) => { if (e.key === "Enter") handleDeploy(); if (e.key === "Escape") setShowDeployModal(false); }}
                   placeholder="Vercel token (e.g. xxxxxxxxxx)"
                   autoFocus
-                  className="w-full px-3 py-2 bg-gray-900 border border-gray-600/40 rounded-lg text-white text-sm placeholder:text-gray-500 focus:outline-none focus:border-gray-400"
+                  className="w-full px-3 py-2 bg-[#faf9f8] border border-[#e5e5e5] rounded-lg text-[#1a1a1a] text-sm placeholder:text-[#888888] focus:outline-none focus:border-[#999999]"
                 />
                 <div className="flex items-center justify-end gap-3">
                   <button
                     onClick={() => { setShowDeployModal(false); setDeployToken(""); }}
-                    className="px-4 py-2 text-sm text-gray-300 hover:text-white transition-colors"
+                    className="px-4 py-2 text-sm text-[#666666] hover:text-[#1a1a1a] transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleDeploy}
                     disabled={isDeploying || !deployToken.trim()}
-                    className="px-4 py-2 bg-white text-black rounded-lg font-medium hover:bg-gray-100 transition-colors disabled:opacity-50 flex items-center gap-2"
+                    className="px-4 py-2 bg-[#1a1a1a] text-white rounded-lg font-medium hover:bg-[#333333] transition-colors disabled:opacity-50 flex items-center gap-2"
                   >
                     {isDeploying ? (
                       <>
