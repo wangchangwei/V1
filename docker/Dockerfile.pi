@@ -1,31 +1,30 @@
-FROM node:20-alpine
+FROM oven/bun:1.3-alpine
 
-# Install pi coding agent globally
-RUN npm install -g @earendil-works/pi-coding-agent
+# Install pi coding agent locally so node_modules resolution works at runtime.
+# `bun add` is faster and uses Bun's lockfile-compatible resolver.
+WORKDIR /app
+RUN bun add @earendil-works/pi-coding-agent@0.79.7 express@^5.1.0 \
+ && bun add -d @types/express@^5.0.2 @types/node@^25.9.3 typescript@^5
 
-WORKDIR /workspace
+# Copy the in-container HTTP entrypoint. Bun runs the TS source directly
+# without a separate build step. Build with the repo root as the build context:
+#   docker build -f docker/Dockerfile.pi -t v1-pi:latest .
+COPY backend/src/pi-http-entry.ts /app/dist/pi-http-entry.ts
 
-# wget for healthcheck
+# wget for HEALTHCHECK against the in-container /health endpoint.
 RUN apk add --no-cache wget
 
-# Health check
-HEALTHCHECK --interval=2s --retries=5 --start-period=2s \
+HEALTHCHECK --interval=2s --retries=10 --start-period=10s \
   CMD wget -qO- http://localhost:7890/health || exit 1
-
-# The pi-http-entry.ts source is built into /app/dist/pi-http-entry.js by the
-# backend build step and copied into the image at build time, e.g.:
-#   docker build -f docker/Dockerfile.pi \
-#     --build-context backend=./backend \
-#     -t v1-pi:latest .
-#   with COPY --from=backend /app/dist/pi-http-entry.js /app/dist/
-#
-# This Dockerfile assumes the compiled JS is already present at the build
-# context root as ./pi-http-entry.js, or is mounted into /app/dist at runtime.
-EXPOSE 7890
 
 # Run as a non-root user. The /workspace mount is still RW so pi can write
 # files; we only restrict privileges inside the container.
 RUN addgroup -S piagent && adduser -S piagent -G piagent
+RUN mkdir -p /workspace && chown piagent:piagent /workspace
+RUN chown -R piagent:piagent /app
 USER piagent
+WORKDIR /workspace
 
-CMD ["node", "/app/dist/pi-http-entry.js"]
+EXPOSE 7890
+
+CMD ["bun", "run", "/app/dist/pi-http-entry.ts"]

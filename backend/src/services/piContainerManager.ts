@@ -87,6 +87,26 @@ function containerName(projectId: string): string {
   return `v1-pi-${projectId}`;
 }
 
+// Wrap a string in single quotes for safe interpolation into a `docker run -e KEY=...`
+// shell command. Escapes embedded single quotes by closing, escaping, and reopening.
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+// Returns a `docker run -v HOST:CONTAINER` flag for the shared pi-agent home
+// directory if it exists on the host, or [] otherwise. The directory holds
+// settings.json (default model), auth.json (API keys), and sessions/.
+async function piAgentHomeMount(): Promise<string[]> {
+  // Allow override via env var; otherwise look at a default host path.
+  const hostDir = process.env.PI_AGENT_HOME ?? path.join(process.cwd(), ".pi-agent-home");
+  try {
+    await fs.access(hostDir);
+    return [`-v ${hostDir}:/home/piagent/.pi/agent`];
+  } catch {
+    return [];
+  }
+}
+
 function resolveImage(configIn: PiContainerConfig): string {
   return configIn.image ?? process.env.PI_IMAGE ?? config.pi.image;
 }
@@ -112,13 +132,30 @@ export async function startPiContainer(
   }
 
   const { memory, cpus, pidsLimit } = config.pi.containerResources;
+  // Forward LLM credentials so pi can make model calls.
+  // pi only reads ANTHROPIC_API_KEY (not ANTHROPIC_AUTH_TOKEN), so we remap.
+  // Each value is shell-quoted to keep special characters out of the docker CLI.
+  const llmEnvFlags: string[] = [];
+  const anthropicKey = process.env.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_AUTH_TOKEN;
+  if (anthropicKey) {
+    llmEnvFlags.push(`-e ANTHROPIC_API_KEY=${shellQuote(anthropicKey)}`);
+  }
+  if (process.env.ANTHROPIC_BASE_URL) {
+    llmEnvFlags.push(`-e ANTHROPIC_BASE_URL=${shellQuote(process.env.ANTHROPIC_BASE_URL)}`);
+  }
+
   const cmd = [
     "docker run -d",
     `--name ${name}`,
     `--label v1.project=${configIn.projectId}`,
     `-v ${configIn.projectDir}:/workspace`,
+    // Bind-mount a shared pi-agent home so all containers pick up the same
+    // settings.json (default model, http proxy, etc.). Optional — if the host
+    // directory doesn't exist, pi will use its built-in defaults.
+    ...(await piAgentHomeMount()),
     `-p ${hostPort}:${config.pi.internalPort}`,
     `-e PI_SECRET=${secret}`,
+    ...llmEnvFlags,
     `--memory=${memory}`,
     `--cpus=${cpus}`,
     `--pids-limit=${pidsLimit}`,

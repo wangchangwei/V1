@@ -48,7 +48,7 @@ function startServer() {
 
   server.on("listening", () => {
     console.log(`December API running on port ${PORT}`);
-    console.log(`AI model: ${config.aiSdk.model}`);
+    console.log(`AI model: managed by pi sidecar`);
     recoverRunningProjects().catch((e) =>
       console.error("[recover] Failed to recover running projects:", e)
     );
