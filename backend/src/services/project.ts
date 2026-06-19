@@ -9,6 +9,7 @@ import {
   stopPiContainer,
   runningContainers,
 } from "./piContainerManager";
+import { DEFAULT_MODEL, MODELS, type ModelId } from "../config";
 
 const execAsync = promisify(exec);
 
@@ -23,6 +24,7 @@ interface ProjectMeta {
   piContainerId?: string;
   createdAt: string;
   displayName?: string;
+  model?: ModelId;
 }
 
 interface ProjectsStore {
@@ -36,10 +38,37 @@ const runningProcesses = new Map<
 >();
 
 async function loadProjectsStore(): Promise<ProjectsStore> {
+  let raw: string;
   try {
-    const raw = await fs.readFile(PROJECTS_JSON, "utf-8");
+    raw = await fs.readFile(PROJECTS_JSON, "utf-8");
+  } catch (err) {
+    // ENOENT is the normal "first run" case — empty store.
+    if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
+      return {};
+    }
+    console.error(
+      "[projects] failed to read projects.json:",
+      err instanceof Error ? err.message : err
+    );
+    return {};
+  }
+  try {
     return JSON.parse(raw);
-  } catch {
+  } catch (err) {
+    // Corrupt JSON: preserve the broken file as a .bak so the user can
+    // recover by hand, then return an empty store so the app keeps running.
+    const backupPath = `${PROJECTS_JSON}.bak-${Date.now()}`;
+    try {
+      await fs.copyFile(PROJECTS_JSON, backupPath);
+      console.warn(
+        `[projects] projects.json is corrupt — backed up to ${backupPath}`
+      );
+    } catch (copyErr) {
+      console.error(
+        "[projects] projects.json is corrupt and backup failed:",
+        copyErr instanceof Error ? copyErr.message : copyErr
+      );
+    }
     return {};
   }
 }
@@ -59,6 +88,60 @@ export async function updateProjectDisplayName(
   }
   store[projectId].displayName = displayName;
   await saveProjectsStore(store);
+}
+
+// Per-project model cache. Mirrors the persistence model: missing field in
+// projects.json means "use DEFAULT_MODEL" (do not write the default into the
+// store). The cache only stores non-default values to keep that invariant
+// observable in the file.
+const projectModelCache = new Map<string, ModelId>();
+
+const VALID_MODEL_IDS: ReadonlySet<string> = new Set(MODELS.map((m) => m.id));
+
+// Read the configured model for a project, falling back to the default when
+// none is set. The result is cached for hot-path lookups inside chat routes.
+// The cache is re-validated against VALID_MODEL_IDS on every read so that
+// shrinking the MODELS list (e.g., removing an entry at deploy time) does
+// not leave stale IDs in memory.
+export async function getProjectModel(projectId: string): Promise<ModelId> {
+  const cached = projectModelCache.get(projectId);
+  if (cached && VALID_MODEL_IDS.has(cached)) return cached;
+
+  const store = await loadProjectsStore();
+  const meta = store[projectId];
+  if (meta?.model && VALID_MODEL_IDS.has(meta.model)) {
+    projectModelCache.set(projectId, meta.model as ModelId);
+    return meta.model as ModelId;
+  }
+  // Drop any stale cache entry that pointed at a model removed from MODELS.
+  if (cached) projectModelCache.delete(projectId);
+  return DEFAULT_MODEL;
+}
+
+// Persist a per-project model override. Throws 404-style error if the project
+// does not exist; the caller is responsible for translating that to an HTTP
+// response. Caller should have validated the model ID already; we re-validate
+// defensively.
+export async function setProjectModel(
+  projectId: string,
+  modelId: ModelId
+): Promise<void> {
+  if (!VALID_MODEL_IDS.has(modelId)) {
+    throw new Error(`unknown_model: ${modelId}`);
+  }
+  const store = await loadProjectsStore();
+  if (!store[projectId]) {
+    throw new Error(`Project not found: ${projectId}`);
+  }
+  store[projectId].model = modelId;
+  await saveProjectsStore(store);
+  projectModelCache.set(projectId, modelId);
+}
+
+// Clear the cache entry for a project. Called when a project is deleted so a
+// subsequent reuse of the same id does not see a stale model.
+export function clearProjectModelCache(projectId: string): void {
+  projectModelCache.delete(projectId);
 }
 
 async function isPortAvailable(port: number): Promise<boolean> {
@@ -450,6 +533,7 @@ export async function deleteProject(projectId: string): Promise<void> {
   const store = await loadProjectsStore();
   delete store[projectId];
   await saveProjectsStore(store);
+  clearProjectModelCache(projectId);
 
   const projectDir = path.join(PROJECTS_DIR, projectId);
   await fs.rm(projectDir, { recursive: true, force: true });

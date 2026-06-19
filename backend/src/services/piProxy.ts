@@ -49,12 +49,16 @@ export function getPiProxySecret(): string {
  * @param projectId - V1 project ID; looks up pi container via runningContainers
  * @param messages - Full conversation history (V1 session as source of truth)
  * @param signal - AbortSignal for client disconnect
+ * @param model - Optional model ID to apply for this turn. The pi sidecar
+ *                calls `session.setModel()` before `session.prompt()` so the
+ *                override is sticky for the duration of the turn.
  * @returns AsyncGenerator of V1-format chunks (already translated by pi-http-entry)
  */
 export async function* piChatStream(
   projectId: string,
   messages: ChatMessage[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  model?: string
 ): AsyncGenerator<PiChatChunk> {
   const hostPort = getPiContainerHostPort(projectId);
   const url = `http://127.0.0.1:${hostPort}/v1/chat/completions`;
@@ -69,7 +73,11 @@ export async function* piChatStream(
     response = await fetch(url, {
       method: "POST",
       headers,
-      body: JSON.stringify({ messages, stream: true }),
+      body: JSON.stringify({
+        messages,
+        stream: true,
+        ...(model ? { model } : {}),
+      }),
       signal,
     });
   } catch (err) {
@@ -79,7 +87,16 @@ export async function* piChatStream(
   }
 
   if (!response.ok) {
-    yield { type: "error", data: { error: `pi returned ${response.status}` } };
+    // Preserve pi's body so the frontend can show a specific error like
+    // "model_not_in_registry" (400) instead of a generic status string.
+    let body: any = {};
+    try {
+      body = await response.json();
+    } catch {
+      // Body wasn't JSON; fall through to generic message.
+    }
+    const message = body?.error ?? `pi returned ${response.status}`;
+    yield { type: "error", data: { error: message } };
     return;
   }
 

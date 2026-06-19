@@ -25,16 +25,20 @@ import { toast } from "react-hot-toast";
 import {
   deployToVercel,
   getChatHistory,
+  getProjectModel,
   Message,
   patchChatMessageStream,
   sendChatMessage,
   sendChatMessageStream,
+  setProjectModel,
+  type ModelInfo,
 } from "../../../lib/backend/api";
 import { findStyleByName, prependStyle } from "../../../lib/styles";
 import { ChatInput } from "../../create/components/ChatInput";
 import { ChatMessage } from "../../create/components/ChatMessage";
 import CodeEditor from "../../editor/CodeEditor";
 import { LivePreview } from "./LivePreview";
+import { ModelSelect } from "./ModelSelect";
 
 interface WorkspaceDashboardProps {
   containerId: string;
@@ -82,6 +86,10 @@ export const WorkspaceDashboard = ({
   const streamingMessageIdRef = useRef<string | null>(null);
   const [isRegenerating, setIsRegenerating] = useState<boolean>(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
+  // Per-project model. Loaded from the backend on mount; updated optimistically
+  // when the user picks a new one, then confirmed by the server response.
+  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
+  const [currentModel, setCurrentModel] = useState<string | null>(null);
 
   // Cancel any in-flight edit stream on unmount.
   useEffect(() => {
@@ -189,6 +197,44 @@ export const WorkspaceDashboard = ({
       loadChatHistory();
     }
   }, [containerId]);
+
+  // Load per-project model + available list once. The dropdown is rendered
+  // even before this resolves (with `currentModel=null` it just shows the
+  // chevron and a placeholder), so this is best-effort.
+  useEffect(() => {
+    if (!containerId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { current, available } = await getProjectModel(containerId);
+        if (cancelled) return;
+        setAvailableModels(available);
+        setCurrentModel(current);
+      } catch (err) {
+        console.error("Failed to load model config:", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [containerId]);
+
+  const handleModelChange = async (newModel: string): Promise<void> => {
+    if (newModel === currentModel) return;
+    const previous = currentModel;
+    setCurrentModel(newModel); // optimistic
+    try {
+      const confirmed = await setProjectModel(containerId, newModel);
+      setCurrentModel(confirmed);
+      const label =
+        availableModels.find((m) => m.id === confirmed)?.displayName ?? confirmed;
+      toast.success(`Model set to ${label}. Applies to your next message.`);
+    } catch (err) {
+      setCurrentModel(previous); // revert
+      const msg = err instanceof Error ? err.message : "Failed to switch model";
+      toast.error(msg);
+    }
+  };
 
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -982,6 +1028,16 @@ export const WorkspaceDashboard = ({
                 <span className="text-sm font-medium text-white/90">
                   AI Assistant
                 </span>
+                <div className="ml-auto">
+                  {currentModel !== null && (
+                    <ModelSelect
+                      models={availableModels}
+                      value={currentModel}
+                      disabled={isLoading || isRegenerating}
+                      onChange={handleModelChange}
+                    />
+                  )}
+                </div>
               </div>
 
               <div className="flex-1 overflow-y-auto p-4 custom-scrollbar relative z-10">

@@ -1,4 +1,4 @@
 {
-  "defaultProvider": "anthropic",
-  "defaultModel": "MiniMax-M3"
+  "defaultProvider": "minimax",
+  "defaultModel": "MiniMax-M2.7-highspeed"
 }

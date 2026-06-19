@@ -103,6 +103,19 @@ export interface EnrichPromptResponse {
   error?: string;
 }
 
+export interface ModelInfo {
+  id: string;
+  displayName: string;
+  provider: string;
+  description: string;
+}
+
+export interface GetModelsResponse {
+  success: boolean;
+  current: string;
+  available: ModelInfo[];
+}
+
 const FETCH_TIMEOUT_MS = 120000;
 
 async function fetchApi<T>(
@@ -251,6 +264,29 @@ export async function deployToVercel(
     method: "POST",
     body: JSON.stringify({ vercelToken }),
   });
+}
+
+export async function getProjectModel(
+  containerId: string
+): Promise<{ current: string; available: ModelInfo[] }> {
+  const response = await fetchApi<GetModelsResponse>(
+    `/chat/${containerId}/model`
+  );
+  return { current: response.current, available: response.available ?? [] };
+}
+
+export async function setProjectModel(
+  containerId: string,
+  model: string
+): Promise<string> {
+  const response = await fetchApi<{ success: boolean; model: string }>(
+    `/chat/${containerId}/model`,
+    {
+      method: "POST",
+      body: JSON.stringify({ model }),
+    }
+  );
+  return response.model;
 }
 
 export async function getChatHistory(

@@ -2,6 +2,9 @@
   "providers": {
     "anthropic": {
       "baseUrl": "https://api.minimaxi.com/anthropic"
+    },
+    "minimax": {
+      "baseUrl": "https://api.minimaxi.com/anthropic"
     }
   }
 }

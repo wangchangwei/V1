@@ -118,13 +118,18 @@ function translateEvent(event: AgentSessionEvent): V1Chunk | null {
     case "message_update": {
       const ame = event.assistantMessageEvent;
       if (ame.type === "text_delta") {
+        // Send only the new delta, NOT accumulatedText. The downstream
+        // consumer (V1 backend's runChatTurn) appends to finalContent,
+        // and the frontend appends to its rendered buffer. Emitting the
+        // accumulated text here would cause every chunk to repeat all
+        // prior chunks, doubling the visible output.
         appendDelta(ame.delta);
         return {
           type: "assistant",
           data: {
             id: assistantId!,
             role: "assistant",
-            content: accumulatedText,
+            content: ame.delta,
             timestamp: assistantTimestamp!,
           },
         };
@@ -155,6 +160,7 @@ function translateEvent(event: AgentSessionEvent): V1Chunk | null {
           id: assistantId!,
           role: "assistant",
           content: text,
+          message: m,
           timestamp: assistantTimestamp!,
         },
       };
@@ -201,7 +207,7 @@ app.post("/v1/chat/completions", async (req: Request, res: Response) => {
     }
   }
 
-  const { messages, stream = true } = (req.body ?? {}) as ChatRequest;
+  const { messages, stream = true, model } = (req.body ?? {}) as ChatRequest;
 
   if (stream === false) {
     return res.status(400).json({ error: "Only streaming supported" });
@@ -237,6 +243,24 @@ app.post("/v1/chat/completions", async (req: Request, res: Response) => {
   try {
     resetSession();
     const { session } = await createAgentSession({ cwd: "/workspace" });
+
+    // Apply the requested model before this turn. The format is either
+    // "provider:modelId" (explicit) or just "modelId" (default provider =
+    // "minimax", which is the actual provider for MiniMax models).
+    // Empty / unset means "use the container's default from settings.json".
+    if (model && typeof model === "string") {
+      const [provider, modelId] = model.includes(":")
+        ? (model.split(":", 2) as [string, string])
+        : (["minimax", model] as [string, string]);
+      const target = session.modelRegistry.find(provider, modelId);
+      if (!target) {
+        return res.status(400).json({ error: "model_not_in_registry" });
+      }
+      // Avoid the round-trip + settings write when nothing would change.
+      if (session.model?.id !== target.id) {
+        await session.setModel(target);
+      }
+    }
 
     let closed = false;
     const unsubscribe = session.subscribe((event) => {

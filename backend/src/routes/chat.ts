@@ -9,6 +9,11 @@ import {
 } from "../services/chatSessions";
 import { captureSnapshot, pruneSnapshots, restoreSnapshot } from "../services/snapshots";
 import { withProjectLock } from "../services/locks";
+import {
+  getProjectModel,
+  setProjectModel,
+} from "../services/project";
+import { DEFAULT_MODEL, MODELS, type ModelId } from "../config";
 
 const router = express.Router();
 
@@ -32,13 +37,17 @@ router.post("/:containerId/messages", async (req: Request, res: Response) => {
 
   try {
     await withProjectLock(containerId, async () => {
+      // Resolve the per-project model up-front so both streaming and
+      // non-streaming paths apply the same override for the turn.
+      const turnModel = await getProjectModel(containerId);
+
       if (stream) {
         res.setHeader("Content-Type", "text/event-stream");
         res.setHeader("Cache-Control", "no-cache");
         res.setHeader("Connection", "keep-alive");
         res.setHeader("Access-Control-Allow-Origin", "*");
 
-        const stream = runChatTurn(containerId, message, attachments, req);
+        const stream = runChatTurn(containerId, message, attachments, req, turnModel);
 
         const keepalive = setInterval(() => {
           try {
@@ -61,7 +70,8 @@ router.post("/:containerId/messages", async (req: Request, res: Response) => {
         const { userMessage, assistantMessage } = await runChatTurnNonStreaming(
           containerId,
           message,
-          attachments
+          attachments,
+          turnModel
         );
 
         res.json({
@@ -187,7 +197,8 @@ router.patch("/:containerId/messages/:messageId", async (req: Request, res: Resp
       res.setHeader("Connection", "keep-alive");
       res.setHeader("Access-Control-Allow-Origin", "*");
 
-      const stream = runChatTurn(containerId, content, [], req);
+      const turnModel = await getProjectModel(containerId);
+      const stream = runChatTurn(containerId, content, [], req, turnModel);
       const keepalive = setInterval(() => {
         try { res.write(": keepalive\n\n"); } catch (_) {}
       }, 15000);
@@ -224,11 +235,13 @@ router.patch("/:containerId/messages/:messageId", async (req: Request, res: Resp
 // Run a chat turn: append user message, capture snapshot, stream from pi.
 // Emits V1-format SSE chunks that the frontend already understands.
 // `req` is passed to forward client-disconnect as an AbortSignal.
+// `turnModel` is the model to apply for this turn; pass-through to pi.
 async function* runChatTurn(
   containerId: string,
   userMessage: string,
   attachments: any[],
-  req: any
+  req: any,
+  turnModel?: string
 ): AsyncGenerator<{ type: string; data: any }> {
   const session = getOrCreateChatSession(containerId);
 
@@ -253,6 +266,7 @@ async function* runChatTurn(
   }
   await pruneSnapshots(containerId, 20);
 
+  const assistantId = `assistant-${Date.now()}`;
   const allToolCalls: ToolCallRecord[] = [];
   let finalContent = "";
   let seenDone = false;
@@ -261,23 +275,34 @@ async function* runChatTurn(
     for await (const chunk of piChatStream(
       containerId,
       sessionToPiMessages(session),
-      req?.signal
+      req?.signal,
+      turnModel
     )) {
       if (chunk.type === "user") {
         // Normalize user content to string: pi may emit [{type:"text",text:"..."}]
         const content = chunk.data?.content;
+        let text = "";
         if (Array.isArray(content)) {
-          const text = content.map((c: any) => c.text ?? "").join("");
-          yield { ...chunk, data: { ...chunk.data, content: text } };
+          text = content.map((c: any) => c.text ?? "").join("");
+        } else if (typeof content === "object" && content !== null) {
+          text = content.text || content.content || JSON.stringify(content);
         } else {
-          yield chunk;
+          text = String(content ?? "");
         }
-      } else if (chunk.type === "assistant") {
-        // pi emits delta-style assistant chunks; concatenate text deltas.
-        const text = extractAssistantText(chunk.data);
-        if (text) finalContent += text;
-        // Normalize content to string and yield to frontend.
         yield { ...chunk, data: { ...chunk.data, content: text } };
+      } else if (chunk.type === "assistant") {
+        if (chunk.data.message !== undefined) {
+          // Full chunk at message_end: capture finalContent but do NOT yield
+          // (already rendered via delta chunks).
+          finalContent = extractAssistantText(chunk.data);
+          continue;
+        }
+        const text = extractAssistantText(chunk.data);
+        if (text) {
+          finalContent += text;
+        }
+        // Normalize content to string and yield to frontend.
+        yield { ...chunk, data: { ...chunk.data, id: assistantId, role: "assistant", content: finalContent } };
       } else if (chunk.type === "tool_call") {
         // Tool calls happen between text deltas; forward them so the chat page
         // can render the agent's actions in real time (e.g., file reads, bash).
@@ -316,7 +341,7 @@ async function* runChatTurn(
   }
 
   const assistantMsg: Message = {
-    id: `assistant-${Date.now()}`,
+    id: assistantId,
     role: "assistant",
     content: finalContent || "Sorry, I could not generate a response.",
     timestamp: new Date().toISOString(),
@@ -336,12 +361,13 @@ async function* runChatTurn(
 async function runChatTurnNonStreaming(
   containerId: string,
   userMessage: string,
-  attachments: any[]
+  attachments: any[],
+  turnModel?: string
 ): Promise<{ userMessage: Message; assistantMessage: Message }> {
   let userMsg: Message | undefined;
   let assistantMsg: Message | undefined;
 
-  for await (const chunk of runChatTurn(containerId, userMessage, attachments, undefined)) {
+  for await (const chunk of runChatTurn(containerId, userMessage, attachments, undefined, turnModel)) {
     if (chunk.type === "user") userMsg = chunk.data;
     // 'done' has empty data {} — capture the last 'assistant' chunk instead.
     if (chunk.type === "assistant") assistantMsg = chunk.data;
@@ -378,5 +404,44 @@ function extractAssistantText(data: any): string {
   }
   return "";
 }
+
+// GET /chat/:containerId/model — return current per-project model and the
+// full list of available models for the UI dropdown.
+router.get("/:containerId/model", async (req: Request, res: Response) => {
+  const containerId = req.params.containerId as string;
+  try {
+    const current = await getProjectModel(containerId);
+    res.json({ success: true, current, available: MODELS });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+});
+
+// POST /chat/:containerId/model — set the per-project model override. The
+// next chat turn (POST /messages) will apply it via pi-http-entry. Does not
+// require withProjectLock: this is a metadata write, not a turn.
+router.post("/:containerId/model", async (req: Request, res: Response) => {
+  const containerId = req.params.containerId as string;
+  const { model } = req.body ?? {};
+
+  if (typeof model !== "string" || !MODELS.some((m) => m.id === model)) {
+    return res.status(400).json({ success: false, error: "unknown_model" });
+  }
+
+  try {
+    await setProjectModel(containerId, model as ModelId);
+    res.json({ success: true, model });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    if (/not found/i.test(msg)) {
+      res.status(404).json({ success: false, error: msg });
+    } else {
+      res.status(500).json({ success: false, error: msg });
+    }
+  }
+});
 
 export default router;

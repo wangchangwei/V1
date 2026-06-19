@@ -144,7 +144,11 @@ export async function startPiContainer(
   const llmEnvFlags: string[] = [];
   const anthropicKey = process.env.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_AUTH_TOKEN;
   if (anthropicKey) {
+    // ANTHROPIC_API_KEY is used for the "anthropic" provider in pi's registry.
     llmEnvFlags.push(`-e ANTHROPIC_API_KEY=${shellQuote(anthropicKey)}`);
+    // MINIMAX_API_KEY is used for the "minimax" provider (MiniMax-M2.7-highspeed etc.).
+    // Both providers use the same underlying key on the MiniMax proxy.
+    llmEnvFlags.push(`-e MINIMAX_API_KEY=${shellQuote(anthropicKey)}`);
   }
   if (process.env.ANTHROPIC_BASE_URL) {
     llmEnvFlags.push(`-e ANTHROPIC_BASE_URL=${shellQuote(process.env.ANTHROPIC_BASE_URL)}`);
