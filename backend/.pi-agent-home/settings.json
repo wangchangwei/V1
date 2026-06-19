@@ -1,0 +1,4 @@
+{
+  "defaultProvider": "anthropic",
+  "defaultModel": "MiniMax-M3"
+}

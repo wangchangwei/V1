@@ -93,15 +93,21 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-// Returns a `docker run -v HOST:CONTAINER` flag for the shared pi-agent home
-// directory if it exists on the host, or [] otherwise. The directory holds
-// settings.json (default model), auth.json (API keys), and sessions/.
+// Returns `docker run -v` flags for shared pi-agent directories.
+// Two directories are mounted:
+//   1. `.pi-agent-home` → `/home/piagent/.pi/agent` — holds settings.json,
+//      auth.json (API keys), and sessions/.
+//   2. `.pi-agent-home/.agents` → `/workspace/.agents` — holds the
+//      ui-ux-pro-max skill and its data/scripts for UI/UX intelligence.
 async function piAgentHomeMount(): Promise<string[]> {
   // Allow override via env var; otherwise look at a default host path.
   const hostDir = process.env.PI_AGENT_HOME ?? path.join(process.cwd(), ".pi-agent-home");
   try {
     await fs.access(hostDir);
-    return [`-v ${hostDir}:/home/piagent/.pi/agent`];
+    return [
+      `-v ${hostDir}:/home/piagent/.pi/agent`,
+      `-v ${hostDir}/.agents:/workspace/.agents`,
+    ];
   } catch {
     return [];
   }

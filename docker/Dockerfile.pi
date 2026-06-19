@@ -12,7 +12,8 @@ RUN bun add @earendil-works/pi-coding-agent@0.79.7 express@^5.1.0 \
 COPY backend/src/pi-http-entry.ts /app/dist/pi-http-entry.ts
 
 # wget for HEALTHCHECK against the in-container /health endpoint.
-RUN apk add --no-cache wget
+# Python 3 for the UI/UX Pro Max skill (search script)
+RUN apk add --no-cache wget python3 py3-pip
 
 HEALTHCHECK --interval=2s --retries=10 --start-period=10s \
   CMD wget -qO- http://localhost:7890/health || exit 1
