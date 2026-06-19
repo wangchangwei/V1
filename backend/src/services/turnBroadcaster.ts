@@ -61,8 +61,39 @@ export class TurnBroadcaster {
   }
 
   // emit / finalize are implemented in Tasks 2 and 4.
-  emit(_chunk: any): void {
-    throw new Error("not implemented");
+  emit(chunk: any): void {
+    // Update state machine.
+    if (chunk?.type === "assistant") {
+      const text = extractAssistantText(chunk.data);
+      if (text) this.state.partialText = text;
+    } else if (chunk?.type === "tool_call") {
+      this.state.toolCalls.push({
+        id: chunk.data.id,
+        name: chunk.data.name,
+        args: chunk.data.args ?? "",
+        ok: true,
+        result: "",
+      });
+    } else if (chunk?.type === "tool_result") {
+      const target = this.state.toolCalls.find((tc) => tc.id === chunk.data.id);
+      if (target) {
+        target.ok = !!chunk.data.ok;
+        target.result =
+          typeof chunk.data.result === "string"
+            ? chunk.data.result
+            : JSON.stringify(chunk.data.result ?? "");
+      }
+    }
+
+    // Fan out to all subscribers; tolerate write failures (e.g. closed res).
+    const payload = `data: ${JSON.stringify(chunk)}\n\n`;
+    for (const res of this.subscribers) {
+      try {
+        res.write(payload);
+      } catch {
+        // Subscriber connection died mid-write; skip.
+      }
+    }
   }
 
   finalize(_status: "done" | "error", _error?: { message: string }): void {
@@ -76,4 +107,16 @@ export class TurnBroadcaster {
   abort(): void {
     // Wired in Task 4 (no-op for now).
   }
+}
+
+function extractAssistantText(data: any): string {
+  if (!data) return "";
+  if (typeof data.content === "string") return data.content;
+  if (Array.isArray(data.content)) {
+    return data.content
+      .filter((c: any) => c?.type === "text")
+      .map((c: any) => c.text ?? "")
+      .join("");
+  }
+  return "";
 }
