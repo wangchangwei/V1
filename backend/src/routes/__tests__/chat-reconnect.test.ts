@@ -104,3 +104,63 @@ describe("POST /chat/:containerId/messages — broadcaster wiring", () => {
     expect(res.body.error).toBe("turn_in_progress");
   });
 });
+
+describe("GET /chat/:containerId/turn-stream", () => {
+  it("emits [DONE] and closes when no broadcaster exists", async () => {
+    const res = await request(app)
+      .get(`/chat/${CID}/turn-stream`)
+      .buffer(true)
+      .parse((r, cb) => {
+        let data = "";
+        r.on("data", (c) => (data += c.toString()));
+        r.on("end", () => cb(null, data));
+      })
+      .expect(200);
+
+    expect(res.body).toBe("data: [DONE]\n\n");
+  });
+
+  it("attaches to an in-flight broadcaster and receives flushed state + new chunks", async () => {
+    // Manually register a broadcaster (simulates an in-flight turn that has
+    // already emitted one assistant chunk and is waiting for done).
+    const { TurnBroadcaster } = await import("../../services/turnBroadcaster");
+    const { setBroadcaster } = await import("../../services/turnBroadcasters");
+    const userMsg = { id: "u-x", role: "user" as const, content: "hello", timestamp: new Date().toISOString() };
+    const broadcaster = new TurnBroadcaster(CID, userMsg, "asst-x", () => {});
+    broadcaster.emit({ type: "assistant", data: { id: "asst-x", role: "assistant", content: "partial" } });
+    setBroadcaster(CID, broadcaster);
+
+    // Call the route handler directly with a fake response object.
+    // This bypasses supertest's streaming agent so we can control res.end().
+    const chunks: string[] = [];
+    let ended = false;
+    const mockRes = {
+      write: (chunk: string) => { chunks.push(chunk); return true; },
+      end: () => { ended = true; },
+      on: vi.fn(), // req.on('close', ...) — ignore
+      setHeader: vi.fn(),
+    } as any;
+
+    const { default: router } = await import("../chat");
+    // Get the route handler from the router for /:containerId/turn-stream
+    const routeHandler = router.stack.find(
+      (l: any) => l.route?.path === "/:containerId/turn-stream"
+    )?.route?.stack?.[0]?.handle;
+
+    // Directly invoke the GET handler with containerId = CID.
+    await routeHandler(
+      { params: { containerId: CID }, on: vi.fn() } as any,
+      mockRes
+    );
+
+    // Flushed state should contain user and partial assistant text.
+    expect(chunks.join("")).toContain('"type":"user"');
+    expect(chunks.join("")).toContain('"type":"assistant"');
+    expect(chunks.join("")).toContain("partial");
+
+    // finalize() should send {type:"done",...} and call res.end().
+    broadcaster.finalize("done");
+    expect(ended).toBe(true);
+    expect(chunks.join("")).toContain('"type":"done"');
+  });
+});

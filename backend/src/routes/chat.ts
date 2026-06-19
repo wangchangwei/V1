@@ -23,6 +23,29 @@ import { DEFAULT_MODEL, MODELS, type ModelId } from "../config";
 
 const router = express.Router();
 
+// GET /chat/:containerId/turn-stream
+// Subscribe to the in-flight turn's remaining chunks. If no turn is
+// in flight, returns [DONE] immediately so the client can end its
+// EventSource without waiting.
+router.get("/:containerId/turn-stream", (req: Request, res: Response) => {
+  const containerId = req.params.containerId as string;
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+
+  const broadcaster = getBroadcaster(containerId);
+  if (!broadcaster) {
+    res.write("data: [DONE]\n\n");
+    res.end();
+    return;
+  }
+
+  broadcaster.attach(res);
+  req.on("close", () => broadcaster.detach(res));
+});
+
 router.post("/:containerId/messages", async (req: Request, res: Response) => {
   const containerId = req.params.containerId as string;
   const { message, attachments = [], stream = false } = req.body ?? {};

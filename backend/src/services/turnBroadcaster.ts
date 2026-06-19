@@ -26,7 +26,7 @@ export interface BroadcasterState {
 interface SubscriberRes {
   write: (chunk: string) => boolean | void;
   on: (event: string, cb: () => void) => void;
-  end?: () => void;
+  end: () => void;
 }
 
 type FinalChunk =
@@ -156,6 +156,7 @@ export class TurnBroadcaster {
 
     for (const res of this.subscribers) {
       safeWrite(res, finalChunk);
+      res.end();
     }
 
     // Notify caller (registry) so it can remove us.
