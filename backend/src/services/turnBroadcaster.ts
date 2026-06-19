@@ -29,6 +29,10 @@ interface SubscriberRes {
   end?: () => void;
 }
 
+type FinalChunk =
+  | { type: "done"; data: { id: string } }
+  | { type: "error"; data: { error: string } };
+
 function safeWrite(res: SubscriberRes, chunk: any): void {
   try {
     res.write(`data: ${JSON.stringify(chunk)}\n\n`);
@@ -158,7 +162,7 @@ export class TurnBroadcaster {
     this.onFinalize();
   }
 
-  private buildFinalChunk(): any {
+  private buildFinalChunk(): FinalChunk {
     if (this.state.status === "done") {
       return { type: "done", data: { id: this.state.assistantMsgId } };
     }
