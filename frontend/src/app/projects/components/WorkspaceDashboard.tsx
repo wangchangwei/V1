@@ -29,6 +29,7 @@ import {
   getTurnStatus,
   Message,
   sendChatMessage,
+  subscribeTurnStream,
   setProjectModel,
   type ModelInfo,
 } from "../../../lib/backend/api";
@@ -81,10 +82,11 @@ export const WorkspaceDashboard = ({
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [currentModel, setCurrentModel] = useState<string | null>(null);
 
-  // Cancel any in-flight edit stream on unmount.
+  // Cancel any in-flight streams on unmount.
   useEffect(() => {
     return () => {
       editCancelRef.current?.();
+      streamCancelRef.current?.();
     };
   }, []);
 
@@ -149,10 +151,7 @@ export const WorkspaceDashboard = ({
                   []
                 );
                 if (response.success) {
-                  setMessages([
-                    response.userMessage,
-                    response.assistantMessage,
-                  ]);
+                  setMessages([response.userMessage]);
                 }
               } catch (error) {
                 console.error("Failed to send initial prompt:", error);
@@ -202,6 +201,94 @@ export const WorkspaceDashboard = ({
                 setStreamingMessageId(partialAssistant.id);
                 streamingMessageIdRef.current = partialAssistant.id;
                 setIsLoading(true);
+
+                // Subscribe so we keep receiving subsequent chunks after page reload.
+                const cancel = subscribeTurnStream(
+                  containerId,
+                  (data) => {
+                    if (data.type === "assistant") {
+                      setMessages((prev) => {
+                        const newMessages = [...prev];
+                        const idx = newMessages.findIndex(
+                          (m) => m.id === data.data.id
+                        );
+                        if (idx < 0) return prev;
+                        const existing = newMessages[idx]!;
+                        newMessages[idx] = {
+                          ...data.data,
+                          toolCalls: data.data.toolCalls ?? existing.toolCalls,
+                        };
+                        return newMessages;
+                      });
+                    } else if (data.type === "tool_call") {
+                      const targetId = streamingMessageIdRef.current;
+                      if (!targetId) return;
+                      setMessages((prev) => {
+                        const newMessages = [...prev];
+                        const idx = newMessages.findIndex(
+                          (m) => m.id === targetId
+                        );
+                        if (idx < 0) return prev;
+                        const msg = newMessages[idx]!;
+                        const toolCalls = msg.toolCalls ?? [];
+                        newMessages[idx] = {
+                          ...msg,
+                          toolCalls: [
+                            ...toolCalls,
+                            {
+                              id: data.data.id,
+                              name: data.data.name,
+                              args:
+                                typeof data.data.args === "string"
+                                  ? data.data.args
+                                  : JSON.stringify(data.data.args ?? ""),
+                              result: "",
+                              ok: true,
+                            },
+                          ],
+                        };
+                        return newMessages;
+                      });
+                    } else if (data.type === "tool_result") {
+                      const targetId = streamingMessageIdRef.current;
+                      if (!targetId) return;
+                      setMessages((prev) => {
+                        const newMessages = [...prev];
+                        const idx = newMessages.findIndex(
+                          (m) => m.id === targetId
+                        );
+                        if (idx < 0) return prev;
+                        const msg = newMessages[idx]!;
+                        const toolCalls = msg.toolCalls ?? [];
+                        newMessages[idx] = {
+                          ...msg,
+                          toolCalls: toolCalls.map((tc) =>
+                            tc.id === data.data.id
+                              ? {
+                                  ...tc,
+                                  ok: !!data.data.ok,
+                                  result:
+                                    typeof data.data.result === "string"
+                                      ? data.data.result
+                                      : JSON.stringify(data.data.result ?? ""),
+                                }
+                              : tc
+                          ),
+                        };
+                        return newMessages;
+                      });
+                    }
+                  },
+                  (error) => {
+                    console.error("Subscription error during recovery:", error);
+                  },
+                  () => {
+                    setIsLoading(false);
+                    setStreamingMessageId(null);
+                    streamingMessageIdRef.current = null;
+                  }
+                );
+                streamCancelRef.current = cancel;
               }
             } catch (err) {
               console.error("Failed to load turn status:", err);
@@ -329,6 +416,7 @@ export const WorkspaceDashboard = ({
     setPendingFiles([]);
     setIsLoading(true);
 
+    // Cancel any previous in-flight subscription.
     streamCancelRef.current?.();
 
     let attachmentData: any[] = [];
@@ -354,17 +442,40 @@ export const WorkspaceDashboard = ({
       }
     }
 
-    const cancel = sendChatMessageStream(
+    // Phase 1: synchronously start the turn.
+    let response: { success: boolean; userMessage: Message; assistantMessageId: string };
+    try {
+      response = await sendChatMessage(containerId, userInput, attachmentData);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to send message";
+      if (/409|turn_in_progress/.test(msg)) {
+        toast.error("A response is already in progress. Wait for it to finish.");
+      } else {
+        toast.error(msg);
+      }
+      setIsLoading(false);
+      return;
+    }
+
+    if (!response.success) {
+      toast.error("Failed to send message");
+      setIsLoading(false);
+      return;
+    }
+
+    // Optimistically add the user message and an empty assistant placeholder.
+    setMessages((prev) => [...prev, response.userMessage]);
+    setStreamingMessageId(response.assistantMessageId);
+    streamingMessageIdRef.current = response.assistantMessageId;
+
+    // Phase 2: subscribe to the turn's chunk stream.
+    const cancel = subscribeTurnStream(
       containerId,
-      userInput,
-      attachmentData,
       (data) => {
         if (data.type === "user") {
-          setMessages((prev) => [...prev, data.data]);
+          // Already added optimistically; skip.
+          return;
         } else if (data.type === "tool_call") {
-          // Attach a new tool call to the in-flight assistant message so the
-          // chat page shows the agent's actions (file reads, bash, etc.) in
-          // real time rather than only at the end of the turn.
           const targetId = streamingMessageIdRef.current;
           if (!targetId) return;
           setMessages((prev) => {
@@ -392,7 +503,6 @@ export const WorkspaceDashboard = ({
             return newMessages;
           });
         } else if (data.type === "tool_result") {
-          // Update the corresponding tool call's result.
           const targetId = streamingMessageIdRef.current;
           if (!targetId) return;
           setMessages((prev) => {
@@ -426,10 +536,7 @@ export const WorkspaceDashboard = ({
             const existingIndex = newMessages.findIndex(
               (msg) => msg.id === data.data.id
             );
-
             if (existingIndex >= 0) {
-              // Preserve any toolCalls accumulated via tool_call chunks
-              // so they aren't lost when the assistant content is replaced.
               const existing = newMessages[existingIndex];
               newMessages[existingIndex] = {
                 ...data.data,
@@ -438,27 +545,20 @@ export const WorkspaceDashboard = ({
             } else {
               newMessages.push(data.data);
             }
-
             return newMessages;
           });
-        } else if (data.type === "done") {
-          setStreamingMessageId(null);
-          streamingMessageIdRef.current = null;
         }
       },
       (error) => {
         console.error("Streaming error:", error);
         setIsLoading(false);
         setStreamingMessageId(null);
-
-        if (error.includes("413") || error.includes("Payload Too Large")) {
+        streamingMessageIdRef.current = null;
+        if (/413|Payload Too Large/.test(error)) {
           toast.error("Files too large. Please reduce file sizes and try again.");
-        } else if (error.includes("502")) {
-          toast.error("请求超时或网关错误(502)。Cursor CLI 响应较慢时可能触发，请稍候再试；若通过端口转发访问，建议直接打开 localhost。");
         } else {
           toast.error("Connection error. Please try again.");
         }
-
         const errorMessage: Message = {
           id: `error-${Date.now()}`,
           role: "assistant",
@@ -468,8 +568,10 @@ export const WorkspaceDashboard = ({
         setMessages((prev) => [...prev, errorMessage]);
       },
       () => {
+        // [DONE] received: turn finished successfully.
         setIsLoading(false);
         setStreamingMessageId(null);
+        streamingMessageIdRef.current = null;
       }
     );
 
@@ -477,115 +579,150 @@ export const WorkspaceDashboard = ({
   };
 
   const handleEditMessage = useCallback(
-    (messageId: string, newContent: string) => {
+    async (messageId: string, newContent: string) => {
       if (isRegenerating) return;
-      editCancelRef.current?.();
       setIsRegenerating(true);
+      setIsLoading(true);
+      editCancelRef.current?.();
+
+      let response: { success: boolean; userMessage: Message; assistantMessageId: string };
       try {
-        editCancelRef.current = patchChatMessageStream(
-          containerId,
-          messageId,
-          newContent,
-          (data) => {
-            if (data.type === "user") {
-              setMessages((prev) => [...prev, data.data]);
-            } else if (data.type === "tool_call") {
-              const targetId = streamingMessageIdRef.current;
-              if (!targetId) return;
-              setMessages((prev) => {
-                const newMessages = [...prev];
-                const idx = newMessages.findIndex((msg) => msg.id === targetId);
-                if (idx < 0) return prev;
-                const msg = newMessages[idx];
-                const toolCalls = msg.toolCalls ?? [];
-                newMessages[idx] = {
-                  ...msg,
-                  toolCalls: [
-                    ...toolCalls,
-                    {
-                      id: data.data.id,
-                      name: data.data.name,
-                      args:
-                        typeof data.data.args === "string"
-                          ? data.data.args
-                          : JSON.stringify(data.data.args ?? ""),
-                      result: "",
-                      ok: true,
-                    },
-                  ],
-                };
-                return newMessages;
-              });
-            } else if (data.type === "tool_result") {
-              const targetId = streamingMessageIdRef.current;
-              if (!targetId) return;
-              setMessages((prev) => {
-                const newMessages = [...prev];
-                const idx = newMessages.findIndex((msg) => msg.id === targetId);
-                if (idx < 0) return prev;
-                const msg = newMessages[idx];
-                const toolCalls = msg.toolCalls ?? [];
-                newMessages[idx] = {
-                  ...msg,
-                  toolCalls: toolCalls.map((tc) =>
-                    tc.id === data.data.id
-                      ? {
-                          ...tc,
-                          ok: !!data.data.ok,
-                          result:
-                            typeof data.data.result === "string"
-                              ? data.data.result
-                              : JSON.stringify(data.data.result ?? ""),
-                        }
-                      : tc
-                  ),
-                };
-                return newMessages;
-              });
-            } else if (data.type === "assistant") {
-              setStreamingMessageId(data.data.id);
-              streamingMessageIdRef.current = data.data.id;
-              setMessages((prev) => {
-                const newMessages = [...prev];
-                const existingIndex = newMessages.findIndex(
-                  (msg) => msg.id === data.data.id
-                );
-                if (existingIndex >= 0) {
-                  const existing = newMessages[existingIndex];
-                  newMessages[existingIndex] = {
-                    ...data.data,
-                    toolCalls: data.data.toolCalls ?? existing.toolCalls,
-                  };
-                } else {
-                  newMessages.push(data.data);
-                }
-                return newMessages;
-              });
-            } else if (data.type === "done") {
-              setStreamingMessageId(null);
-              streamingMessageIdRef.current = null;
-            }
-          },
-          (error) => {
-            toast.error(error);
-            setStreamingMessageId(null);
-            setIsRegenerating(false);
-            editCancelRef.current = null;
-          },
-          () => {
-            setStreamingMessageId(null);
-            toast.success("Regenerated from edit");
-            setIsRegenerating(false);
-            editCancelRef.current = null;
+        const res = await fetch(
+          `${API_BASE_URL}/chat/${containerId}/messages/${messageId}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: newContent }),
           }
         );
-      } catch (error) {
-        console.error("Edit stream failed to start:", error);
+        if (!res.ok) {
+          if (res.status === 410) throw new Error("Cannot undo past 20 messages — snapshot was pruned.");
+          else if (res.status === 404) throw new Error("Message not found.");
+          else if (res.status === 400) throw new Error("Cannot edit this message.");
+          else if (res.status === 409) throw new Error("A response is already in progress.");
+          else throw new Error(`Edit failed: ${res.status}`);
+        }
+        response = await res.json();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Edit failed";
+        if (/410/.test(msg)) toast.error("Cannot undo past 20 messages — snapshot was pruned.");
+        else if (/404/.test(msg)) toast.error("Message not found.");
+        else if (/400/.test(msg)) toast.error("Cannot edit this message.");
+        else if (/409|turn_in_progress/.test(msg)) toast.error("A response is already in progress.");
+        else toast.error(msg);
         setIsRegenerating(false);
-        editCancelRef.current = null;
+        setIsLoading(false);
+        return;
       }
+
+      if (!response.success) {
+        toast.error("Edit failed");
+        setIsRegenerating(false);
+        setIsLoading(false);
+        return;
+      }
+
+      // Optimistically: append the edited user message + assistant placeholder.
+      setMessages((prev) => [...prev, response.userMessage]);
+      setStreamingMessageId(response.assistantMessageId);
+      streamingMessageIdRef.current = response.assistantMessageId;
+
+      const cancel = subscribeTurnStream(
+        containerId,
+        (data) => {
+          if (data.type === "user") return;
+          if (data.type === "tool_call") {
+            const targetId = streamingMessageIdRef.current;
+            if (!targetId) return;
+            setMessages((prev) => {
+              const newMessages = [...prev];
+              const idx = newMessages.findIndex((msg) => msg.id === targetId);
+              if (idx < 0) return prev;
+              const msg = newMessages[idx];
+              const toolCalls = msg.toolCalls ?? [];
+              newMessages[idx] = {
+                ...msg,
+                toolCalls: [
+                  ...toolCalls,
+                  {
+                    id: data.data.id,
+                    name: data.data.name,
+                    args:
+                      typeof data.data.args === "string"
+                        ? data.data.args
+                        : JSON.stringify(data.data.args ?? ""),
+                    result: "",
+                    ok: true,
+                  },
+                ],
+              };
+              return newMessages;
+            });
+          } else if (data.type === "tool_result") {
+            const targetId = streamingMessageIdRef.current;
+            if (!targetId) return;
+            setMessages((prev) => {
+              const newMessages = [...prev];
+              const idx = newMessages.findIndex((msg) => msg.id === targetId);
+              if (idx < 0) return prev;
+              const msg = newMessages[idx];
+              const toolCalls = msg.toolCalls ?? [];
+              newMessages[idx] = {
+                ...msg,
+                toolCalls: toolCalls.map((tc) =>
+                  tc.id === data.data.id
+                    ? {
+                        ...tc,
+                        ok: !!data.data.ok,
+                        result:
+                          typeof data.data.result === "string"
+                            ? data.data.result
+                            : JSON.stringify(data.data.result ?? ""),
+                      }
+                    : tc
+                ),
+              };
+              return newMessages;
+            });
+          } else if (data.type === "assistant") {
+            setStreamingMessageId(data.data.id);
+            streamingMessageIdRef.current = data.data.id;
+            setMessages((prev) => {
+              const newMessages = [...prev];
+              const existingIndex = newMessages.findIndex(
+                (msg) => msg.id === data.data.id
+              );
+              if (existingIndex >= 0) {
+                const existing = newMessages[existingIndex];
+                newMessages[existingIndex] = {
+                  ...data.data,
+                  toolCalls: data.data.toolCalls ?? existing.toolCalls,
+                };
+              } else {
+                newMessages.push(data.data);
+              }
+              return newMessages;
+            });
+          }
+        },
+        (error) => {
+          toast.error(error);
+          setStreamingMessageId(null);
+          setIsRegenerating(false);
+          setIsLoading(false);
+          editCancelRef.current = null;
+        },
+        () => {
+          setStreamingMessageId(null);
+          toast.success("Regenerated from edit");
+          setIsRegenerating(false);
+          setIsLoading(false);
+          editCancelRef.current = null;
+        }
+      );
+      editCancelRef.current = cancel;
     },
-    [containerId, isRegenerating, setMessages, setStreamingMessageId, toast]
+    [containerId, isRegenerating]
   );
 
   const handleTextareaKeyDown = (
