@@ -65,8 +65,8 @@ router.post("/:containerId/messages", async (req: Request, res: Response) => {
         containerId,
         message,
         attachments,
-        req,
-        turnModel
+        turnModel,
+        req.signal
       );
 
       res.json({
@@ -216,8 +216,8 @@ router.patch("/:containerId/messages/:messageId", async (req: Request, res: Resp
         containerId,
         content,
         [],
-        req?.signal,
-        turnModel
+        turnModel,
+        req?.signal
       );
 
       res.json({
