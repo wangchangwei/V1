@@ -30,21 +30,12 @@ export interface ToolCallRecord {
   ok: boolean;
 }
 
-export interface InProgressTurn {
-  userMsgId: string;
-  assistantMsgId: string;
-  partialText: string;
-  toolCalls: ToolCallRecord[];
-  startedAt: string;
-}
-
 export interface ChatSession {
   id: string;
   containerId: string;
   messages: Message[];
   createdAt: string;
   updatedAt: string;
-  inProgressTurn?: InProgressTurn;
 }
 
 // Exported for test isolation only; production code should use
@@ -104,12 +95,6 @@ export function sessionToPiMessages(
   const result: Array<{ role: "user" | "assistant"; content: string | Array<{ type: "text" | "image_url"; text?: string; image_url?: { url: string } }> }> = [];
   for (const msg of session.messages) {
     if (msg.role === "user") {
-      // Skip the in-flight user message: it has no snapshotId yet and its id
-      // matches session.inProgressTurn.userMsgId. Re-sending it to pi while
-      // pi is already streaming its response would cause a duplicate turn.
-      if (!msg.snapshotId && session.inProgressTurn?.userMsgId === msg.id) {
-        continue;
-      }
       result.push(buildUserContent(msg.content, msg.attachments));
     } else if (msg.role === "assistant") {
       result.push({ role: "assistant", content: msg.content || "" });
