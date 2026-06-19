@@ -76,6 +76,10 @@ export const WorkspaceDashboard = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const streamCancelRef = useRef<(() => void) | null>(null);
   const editCancelRef = useRef<(() => void) | null>(null);
+  // Synchronous mirror of streamingMessageId so tool_call/tool_result chunks
+  // (which arrive inside the same SSE callback) can attach to the current
+  // assistant message without waiting for the next render.
+  const streamingMessageIdRef = useRef<string | null>(null);
   const [isRegenerating, setIsRegenerating] = useState<boolean>(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
 
@@ -291,10 +295,66 @@ export const WorkspaceDashboard = ({
       (data) => {
         if (data.type === "user") {
           setMessages((prev) => [...prev, data.data]);
-        } else if (data.type === "tool_call" || data.type === "tool_result") {
-          // No-op: tool calls are shown in the final assistant message
+        } else if (data.type === "tool_call") {
+          // Attach a new tool call to the in-flight assistant message so the
+          // chat page shows the agent's actions (file reads, bash, etc.) in
+          // real time rather than only at the end of the turn.
+          const targetId = streamingMessageIdRef.current;
+          if (!targetId) return;
+          setMessages((prev) => {
+            const newMessages = [...prev];
+            const idx = newMessages.findIndex((msg) => msg.id === targetId);
+            if (idx < 0) return prev;
+            const msg = newMessages[idx];
+            const toolCalls = msg.toolCalls ?? [];
+            newMessages[idx] = {
+              ...msg,
+              toolCalls: [
+                ...toolCalls,
+                {
+                  id: data.data.id,
+                  name: data.data.name,
+                  args:
+                    typeof data.data.args === "string"
+                      ? data.data.args
+                      : JSON.stringify(data.data.args ?? ""),
+                  result: "",
+                  ok: true,
+                },
+              ],
+            };
+            return newMessages;
+          });
+        } else if (data.type === "tool_result") {
+          // Update the corresponding tool call's result.
+          const targetId = streamingMessageIdRef.current;
+          if (!targetId) return;
+          setMessages((prev) => {
+            const newMessages = [...prev];
+            const idx = newMessages.findIndex((msg) => msg.id === targetId);
+            if (idx < 0) return prev;
+            const msg = newMessages[idx];
+            const toolCalls = msg.toolCalls ?? [];
+            newMessages[idx] = {
+              ...msg,
+              toolCalls: toolCalls.map((tc) =>
+                tc.id === data.data.id
+                  ? {
+                      ...tc,
+                      ok: !!data.data.ok,
+                      result:
+                        typeof data.data.result === "string"
+                          ? data.data.result
+                          : JSON.stringify(data.data.result ?? ""),
+                    }
+                  : tc
+              ),
+            };
+            return newMessages;
+          });
         } else if (data.type === "assistant") {
           setStreamingMessageId(data.data.id);
+          streamingMessageIdRef.current = data.data.id;
           setMessages((prev) => {
             const newMessages = [...prev];
             const existingIndex = newMessages.findIndex(
@@ -302,7 +362,13 @@ export const WorkspaceDashboard = ({
             );
 
             if (existingIndex >= 0) {
-              newMessages[existingIndex] = data.data;
+              // Preserve any toolCalls accumulated via tool_call chunks
+              // so they aren't lost when the assistant content is replaced.
+              const existing = newMessages[existingIndex];
+              newMessages[existingIndex] = {
+                ...data.data,
+                toolCalls: data.data.toolCalls ?? existing.toolCalls,
+              };
             } else {
               newMessages.push(data.data);
             }
@@ -311,6 +377,7 @@ export const WorkspaceDashboard = ({
           });
         } else if (data.type === "done") {
           setStreamingMessageId(null);
+          streamingMessageIdRef.current = null;
         }
       },
       (error) => {
@@ -356,17 +423,73 @@ export const WorkspaceDashboard = ({
           (data) => {
             if (data.type === "user") {
               setMessages((prev) => [...prev, data.data]);
-            } else if (data.type === "tool_call" || data.type === "tool_result") {
-              // no-op
+            } else if (data.type === "tool_call") {
+              const targetId = streamingMessageIdRef.current;
+              if (!targetId) return;
+              setMessages((prev) => {
+                const newMessages = [...prev];
+                const idx = newMessages.findIndex((msg) => msg.id === targetId);
+                if (idx < 0) return prev;
+                const msg = newMessages[idx];
+                const toolCalls = msg.toolCalls ?? [];
+                newMessages[idx] = {
+                  ...msg,
+                  toolCalls: [
+                    ...toolCalls,
+                    {
+                      id: data.data.id,
+                      name: data.data.name,
+                      args:
+                        typeof data.data.args === "string"
+                          ? data.data.args
+                          : JSON.stringify(data.data.args ?? ""),
+                      result: "",
+                      ok: true,
+                    },
+                  ],
+                };
+                return newMessages;
+              });
+            } else if (data.type === "tool_result") {
+              const targetId = streamingMessageIdRef.current;
+              if (!targetId) return;
+              setMessages((prev) => {
+                const newMessages = [...prev];
+                const idx = newMessages.findIndex((msg) => msg.id === targetId);
+                if (idx < 0) return prev;
+                const msg = newMessages[idx];
+                const toolCalls = msg.toolCalls ?? [];
+                newMessages[idx] = {
+                  ...msg,
+                  toolCalls: toolCalls.map((tc) =>
+                    tc.id === data.data.id
+                      ? {
+                          ...tc,
+                          ok: !!data.data.ok,
+                          result:
+                            typeof data.data.result === "string"
+                              ? data.data.result
+                              : JSON.stringify(data.data.result ?? ""),
+                        }
+                      : tc
+                  ),
+                };
+                return newMessages;
+              });
             } else if (data.type === "assistant") {
               setStreamingMessageId(data.data.id);
+              streamingMessageIdRef.current = data.data.id;
               setMessages((prev) => {
                 const newMessages = [...prev];
                 const existingIndex = newMessages.findIndex(
                   (msg) => msg.id === data.data.id
                 );
                 if (existingIndex >= 0) {
-                  newMessages[existingIndex] = data.data;
+                  const existing = newMessages[existingIndex];
+                  newMessages[existingIndex] = {
+                    ...data.data,
+                    toolCalls: data.data.toolCalls ?? existing.toolCalls,
+                  };
                 } else {
                   newMessages.push(data.data);
                 }
@@ -374,6 +497,7 @@ export const WorkspaceDashboard = ({
               });
             } else if (data.type === "done") {
               setStreamingMessageId(null);
+              streamingMessageIdRef.current = null;
             }
           },
           (error) => {

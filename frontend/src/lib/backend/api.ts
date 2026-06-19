@@ -22,12 +22,21 @@ export interface Container {
   displayName?: string;
 }
 
+export interface ToolCall {
+  id: string;
+  name: string;
+  args: string;
+  result: string;
+  ok: boolean;
+}
+
 export interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: string;
   attachments?: Attachment[];
+  toolCalls?: ToolCall[];
 }
 
 export interface Attachment {

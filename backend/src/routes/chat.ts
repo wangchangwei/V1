@@ -240,7 +240,9 @@ async function* runChatTurn(
     attachments: attachments && attachments.length > 0 ? attachments : undefined,
   };
   session.messages.push(userMsg);
-  yield { type: "user", data: userMsg };
+  // Don't yield here — pi-http-entry echoes the user message back via its
+  // own `message_start` event, which we forward. Yielding here too would
+  // produce duplicate user messages on the chat page.
 
   // Capture filesystem snapshot BEFORE the AI starts mutating files.
   // Best-effort: only set snapshotId on success so the message is
@@ -277,6 +279,8 @@ async function* runChatTurn(
         // Normalize content to string and yield to frontend.
         yield { ...chunk, data: { ...chunk.data, content: text } };
       } else if (chunk.type === "tool_call") {
+        // Tool calls happen between text deltas; forward them so the chat page
+        // can render the agent's actions in real time (e.g., file reads, bash).
         const record: ToolCallRecord = {
           id: chunk.data.id,
           name: chunk.data.name,
@@ -285,12 +289,14 @@ async function* runChatTurn(
           result: "",
         };
         allToolCalls.push(record);
+        yield chunk;
       } else if (chunk.type === "tool_result") {
         const last = allToolCalls.find((tc) => tc.id === chunk.data.id);
         if (last) {
           last.ok = !!chunk.data.ok;
           last.result = chunk.data.result ?? "";
         }
+        yield chunk;
       } else if (chunk.type === "error") {
         yield { type: "error", data: chunk.data };
         return;
