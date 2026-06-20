@@ -498,119 +498,24 @@ export const WorkspaceDashboard = ({
       return;
     }
 
-    // Optimistically add the user message and an empty assistant placeholder.
-    setMessages((prev) => [...prev, response.userMessage]);
-    setStreamingMessageId(response.assistantMessageId);
-    streamingMessageIdRef.current = response.assistantMessageId;
-
-    // Phase 2: subscribe to the turn's chunk stream.
-    const cancel = subscribeTurnStream(
-      containerId,
-      (data) => {
-        if (data.type === "user") {
-          // Already added optimistically; skip.
-          return;
-        } else if (data.type === "tool_call") {
-          const targetId = streamingMessageIdRef.current;
-          if (!targetId) return;
-          setMessages((prev) => {
-            const newMessages = [...prev];
-            const idx = newMessages.findIndex((msg) => msg.id === targetId);
-            if (idx < 0) return prev;
-            const msg = newMessages[idx];
-            const toolCalls = msg.toolCalls ?? [];
-            newMessages[idx] = {
-              ...msg,
-              toolCalls: [
-                ...toolCalls,
-                {
-                  id: data.data.id,
-                  name: data.data.name,
-                  args:
-                    typeof data.data.args === "string"
-                      ? data.data.args
-                      : JSON.stringify(data.data.args ?? ""),
-                  result: "",
-                  ok: true,
-                },
-              ],
-            };
-            return newMessages;
-          });
-        } else if (data.type === "tool_result") {
-          const targetId = streamingMessageIdRef.current;
-          if (!targetId) return;
-          setMessages((prev) => {
-            const newMessages = [...prev];
-            const idx = newMessages.findIndex((msg) => msg.id === targetId);
-            if (idx < 0) return prev;
-            const msg = newMessages[idx];
-            const toolCalls = msg.toolCalls ?? [];
-            newMessages[idx] = {
-              ...msg,
-              toolCalls: toolCalls.map((tc) =>
-                tc.id === data.data.id
-                  ? {
-                      ...tc,
-                      ok: !!data.data.ok,
-                      result:
-                        typeof data.data.result === "string"
-                          ? data.data.result
-                          : JSON.stringify(data.data.result ?? ""),
-                    }
-                  : tc
-              ),
-            };
-            return newMessages;
-          });
-        } else if (data.type === "assistant") {
-          setStreamingMessageId(data.data.id);
-          streamingMessageIdRef.current = data.data.id;
-          setMessages((prev) => {
-            const newMessages = [...prev];
-            const existingIndex = newMessages.findIndex(
-              (msg) => msg.id === data.data.id
-            );
-            if (existingIndex >= 0) {
-              const existing = newMessages[existingIndex];
-              newMessages[existingIndex] = {
-                ...data.data,
-                toolCalls: data.data.toolCalls ?? existing.toolCalls,
-              };
-            } else {
-              newMessages.push(data.data);
-            }
-            return newMessages;
-          });
-        }
-      },
-      (error) => {
-        console.error("Streaming error:", error);
-        setIsLoading(false);
-        setStreamingMessageId(null);
-        streamingMessageIdRef.current = null;
-        if (/413|Payload Too Large/.test(error)) {
-          toast.error("Files too large. Please reduce file sizes and try again.");
-        } else {
-          toast.error("Connection error. Please try again.");
-        }
-        const errorMessage: Message = {
-          id: `error-${Date.now()}`,
-          role: "assistant",
-          content: "Sorry, I encountered an error. Please try again.",
-          timestamp: new Date().toISOString(),
-        };
-        setMessages((prev) => [...prev, errorMessage]);
-      },
-      () => {
-        // [DONE] received: turn finished successfully.
-        setIsLoading(false);
-        setStreamingMessageId(null);
-        streamingMessageIdRef.current = null;
+    // POST /messages is JSON-only: by the time it returns, runChatTurn has
+    // already completed and the broadcaster is gone. The assistant's full
+    // response is persisted in storage, so refresh history to render the
+    // complete transcript. While waiting, isLoading stays true and the
+    // "Thinking..." bubble stays visible.
+    try {
+      const history = await getChatHistory(containerId);
+      if (history.success) {
+        setMessages(history.messages);
+      } else {
+        setMessages((prev) => [...prev, response.userMessage]);
       }
-    );
-
-    streamCancelRef.current = cancel;
+    } catch (err) {
+      console.error("Failed to load chat history after send:", err);
+      setMessages((prev) => [...prev, response.userMessage]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleEditMessage = useCallback(
@@ -657,105 +562,26 @@ export const WorkspaceDashboard = ({
         return;
       }
 
-      // Optimistically: append the edited user message + assistant placeholder.
-      setMessages((prev) => [...prev, response.userMessage]);
-      setStreamingMessageId(response.assistantMessageId);
-      streamingMessageIdRef.current = response.assistantMessageId;
-
-      const cancel = subscribeTurnStream(
-        containerId,
-        (data) => {
-          if (data.type === "user") return;
-          if (data.type === "tool_call") {
-            const targetId = streamingMessageIdRef.current;
-            if (!targetId) return;
-            setMessages((prev) => {
-              const newMessages = [...prev];
-              const idx = newMessages.findIndex((msg) => msg.id === targetId);
-              if (idx < 0) return prev;
-              const msg = newMessages[idx];
-              const toolCalls = msg.toolCalls ?? [];
-              newMessages[idx] = {
-                ...msg,
-                toolCalls: [
-                  ...toolCalls,
-                  {
-                    id: data.data.id,
-                    name: data.data.name,
-                    args:
-                      typeof data.data.args === "string"
-                        ? data.data.args
-                        : JSON.stringify(data.data.args ?? ""),
-                    result: "",
-                    ok: true,
-                  },
-                ],
-              };
-              return newMessages;
-            });
-          } else if (data.type === "tool_result") {
-            const targetId = streamingMessageIdRef.current;
-            if (!targetId) return;
-            setMessages((prev) => {
-              const newMessages = [...prev];
-              const idx = newMessages.findIndex((msg) => msg.id === targetId);
-              if (idx < 0) return prev;
-              const msg = newMessages[idx];
-              const toolCalls = msg.toolCalls ?? [];
-              newMessages[idx] = {
-                ...msg,
-                toolCalls: toolCalls.map((tc) =>
-                  tc.id === data.data.id
-                    ? {
-                        ...tc,
-                        ok: !!data.data.ok,
-                        result:
-                          typeof data.data.result === "string"
-                            ? data.data.result
-                            : JSON.stringify(data.data.result ?? ""),
-                      }
-                    : tc
-                ),
-              };
-              return newMessages;
-            });
-          } else if (data.type === "assistant") {
-            setStreamingMessageId(data.data.id);
-            streamingMessageIdRef.current = data.data.id;
-            setMessages((prev) => {
-              const newMessages = [...prev];
-              const existingIndex = newMessages.findIndex(
-                (msg) => msg.id === data.data.id
-              );
-              if (existingIndex >= 0) {
-                const existing = newMessages[existingIndex];
-                newMessages[existingIndex] = {
-                  ...data.data,
-                  toolCalls: data.data.toolCalls ?? existing.toolCalls,
-                };
-              } else {
-                newMessages.push(data.data);
-              }
-              return newMessages;
-            });
-          }
-        },
-        (error) => {
-          toast.error(error);
-          setStreamingMessageId(null);
-          setIsRegenerating(false);
-          setIsLoading(false);
-          editCancelRef.current = null;
-        },
-        () => {
-          setStreamingMessageId(null);
-          toast.success("Regenerated from edit");
-          setIsRegenerating(false);
-          setIsLoading(false);
-          editCancelRef.current = null;
+      // PATCH /messages/:id is JSON-only: AI is done by the time it returns,
+      // and the broadcaster is gone. SSE subscription would just receive
+      // [DONE] immediately. Reload history to render the full transcript
+      // (user edit + assistant regenerated response) and keep isLoading
+      // through the round trip so the "Thinking..." bubble stays visible.
+      try {
+        const history = await getChatHistory(containerId);
+        if (history.success) {
+          setMessages(history.messages);
+        } else {
+          setMessages((prev) => [...prev, response.userMessage]);
         }
-      );
-      editCancelRef.current = cancel;
+        toast.success("Regenerated from edit");
+      } catch (err) {
+        console.error("Failed to load chat history after edit:", err);
+        setMessages((prev) => [...prev, response.userMessage]);
+      } finally {
+        setIsRegenerating(false);
+        setIsLoading(false);
+      }
     },
     [containerId, isRegenerating]
   );
