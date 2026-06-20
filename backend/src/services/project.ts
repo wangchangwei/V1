@@ -11,6 +11,15 @@ import {
 } from "./piContainerManager";
 import { DEFAULT_MODEL, MODELS, type ModelId } from "../config";
 
+// Lazy import E2B to avoid requiring the SDK when not in use
+let e2bManager: typeof import("./e2bSandboxManager") | null = null;
+async function getE2BManager() {
+  if (!e2bManager) {
+    e2bManager = await import("./e2bSandboxManager");
+  }
+  return e2bManager;
+}
+
 const execAsync = promisify(exec);
 
 export const PROJECTS_DIR = path.join(os.homedir(), "december-projects");
@@ -28,6 +37,7 @@ interface ProjectMeta {
   githubRepo?: string;
   githubBranch?: string;
   vercelUrl?: string;
+  useE2B?: boolean;
 }
 
 interface ProjectsStore {
@@ -302,6 +312,37 @@ function runBunDev(projectDir: string, port: number): ReturnType<typeof spawn> {
   return child;
 }
 
+// Start the execution engine (bun dev or E2B sandbox) for a project.
+// Returns the preview URL. Falls back to bun dev if E2B is not enabled.
+async function startExecutionEngine(
+  projectId: string,
+  projectDir: string,
+  useE2B: boolean,
+  fallbackPort: number
+): Promise<{ url: string; type: "bun" | "e2b" }> {
+  if (useE2B) {
+    try {
+      const m = await getE2BManager();
+      const handle = await m.startE2BSandbox(projectId);
+      return { url: handle.previewUrl, type: "e2b" };
+    } catch (err) {
+      console.warn(`[project] E2B failed for ${projectId}, falling back to bun dev:`, err);
+    }
+  }
+
+  // Fallback: bun dev
+  const child = runBunDev(projectDir, fallbackPort);
+  runningProcesses.set(projectId, { process: child, port: fallbackPort });
+  child.on("exit", (code) => {
+    runningProcesses.delete(projectId);
+    releasePort(fallbackPort);
+    if (code !== null && code !== 0) {
+      console.log(`Project ${projectId} process exited with code ${code}`);
+    }
+  });
+  return { url: `http://127.0.0.1:${fallbackPort}`, type: "bun" };
+}
+
 export async function listProjects(): Promise<any[]> {
   const store = await loadProjectsStore();
   const result: any[] = [];
@@ -318,6 +359,20 @@ export async function listProjects(): Promise<any[]> {
     const port = running?.port ?? meta.port;
     const status = running ? "running" : "exited";
 
+    let url: string | null = null;
+    if (meta.useE2B) {
+      // E2B sandbox URL is dynamic — get from manager if running
+      try {
+        const m = await getE2BManager();
+        const h = m.getE2BSandbox(projectId);
+        url = h?.previewUrl ?? null;
+      } catch (_) {
+        url = null;
+      }
+    } else {
+      url = port ? `http://127.0.0.1:${port}` : null;
+    }
+
     result.push({
       id: projectId,
       dockerId: projectId,
@@ -326,13 +381,14 @@ export async function listProjects(): Promise<any[]> {
       image: "local",
       created: meta.createdAt,
       assignedPort: port,
-      url: port ? `http://127.0.0.1:${port}` : null,
+      url,
       displayName: meta.displayName,
       ports: port ? [{ private: 3000, public: port, type: "tcp" }] : [],
       labels: { project: "december", containerId: projectId },
       githubRepo: meta.githubRepo,
       githubBranch: meta.githubBranch,
       vercelUrl: meta.vercelUrl,
+      useE2B: meta.useE2B,
     });
   }
 
@@ -351,21 +407,14 @@ export async function registerAndStartProject(projectId: string): Promise<{
   const projectDir = path.join(PROJECTS_DIR, projectId);
 
   const store = await loadProjectsStore();
-  store[projectId] = { port: assignedPort, createdAt: new Date().toISOString() };
+  const existing = store[projectId];
+  const useE2B = existing?.useE2B ?? false;
+  store[projectId] = { ...(existing ?? {}), port: assignedPort, createdAt: new Date().toISOString(), useE2B };
   await saveProjectsStore(store);
 
-  const child = runBunDev(projectDir, assignedPort);
-  runningProcesses.set(projectId, { process: child, port: assignedPort });
+  const execResult = await startExecutionEngine(projectId, projectDir, useE2B, assignedPort);
 
-  child.on("exit", (code) => {
-    runningProcesses.delete(projectId);
-    releasePort(assignedPort);
-    if (code !== null && code !== 0) {
-      console.log(`Project ${projectId} process exited with code ${code}`);
-    }
-  });
-
-  // Start the pi sidecar container alongside bun dev.
+  // Start the pi sidecar container alongside execution engine.
   try {
     const piHandle = await startPiContainer({
       projectId,
@@ -380,7 +429,7 @@ export async function registerAndStartProject(projectId: string): Promise<{
     console.error(`[project] failed to start pi container for ${projectId}:`, msg);
   }
 
-  console.log(`[import] Project ${projectId} running on port ${assignedPort}`);
+  console.log(`[import] Project ${projectId} running on ${execResult.url} (${execResult.type})`);
 
   return {
     port: assignedPort,
@@ -389,7 +438,7 @@ export async function registerAndStartProject(projectId: string): Promise<{
       containerId: projectId,
       status: "running",
       port: assignedPort,
-      url: `http://127.0.0.1:${assignedPort}`,
+      url: execResult.url,
       createdAt: store[projectId].createdAt,
       type: "Next.js App",
     },
@@ -406,24 +455,16 @@ export async function createProject(): Promise<{
   const assignedPort = await findAvailablePort();
 
   const store = await loadProjectsStore();
-  store[projectId] = { port: assignedPort, createdAt: new Date().toISOString() };
+  const useE2B = process.env.E2B_DEFAULT_ENABLED === "true";
+  store[projectId] = { port: assignedPort, createdAt: new Date().toISOString(), useE2B };
   await saveProjectsStore(store);
 
   console.log(`Installing dependencies in ${projectDir}...`);
   await runBunInstall(projectDir);
 
-  const child = runBunDev(projectDir, assignedPort);
-  runningProcesses.set(projectId, { process: child, port: assignedPort });
+  const execResult = await startExecutionEngine(projectId, projectDir, useE2B, assignedPort);
 
-  child.on("exit", (code) => {
-    runningProcesses.delete(projectId);
-    releasePort(assignedPort);
-    if (code !== null && code !== 0) {
-      console.log(`Project ${projectId} process exited with code ${code}`);
-    }
-  });
-
-  // Start the pi sidecar container alongside bun dev. Shares the same
+  // Start the pi sidecar container alongside execution engine. Shares the same
   // projectDir mount so the AI sees the same workspace the user sees.
   try {
     const piHandle = await startPiContainer({
@@ -437,10 +478,10 @@ export async function createProject(): Promise<{
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[project] failed to start pi container for ${projectId}:`, msg);
-    // Continue — bun dev is running; user can retry pi via a future endpoint.
+    // Continue — execution engine is running; user can retry pi via a future endpoint.
   }
 
-  console.log(`Project ${projectId} running on port ${assignedPort}`);
+  console.log(`Project ${projectId} running on ${execResult.url} (${execResult.type})`);
 
   return {
     projectId,
@@ -450,7 +491,7 @@ export async function createProject(): Promise<{
       containerId: projectId,
       status: "running",
       port: assignedPort,
-      url: `http://127.0.0.1:${assignedPort}`,
+      url: execResult.url,
       createdAt: store[projectId].createdAt,
       type: "Next.js App",
     },
@@ -477,25 +518,34 @@ export async function startProject(projectId: string): Promise<{ port: number }>
   }
 
   const port = meta.port;
-  if (!(await isPortAvailable(port))) {
-    // 端口已被占用，说明 bun dev 进程在后端重启前已在运行，直接重新注册
-    usedPorts.add(port);
-    runningProcesses.set(projectId, { process: null as any, port });
-    console.log(`Project ${projectId} re-registered on existing port ${port}`);
-    return { port };
-  }
-  usedPorts.add(port);
-
-  const child = runBunDev(projectDir, port);
-  runningProcesses.set(projectId, { process: child, port });
-
-  child.on("exit", (code) => {
-    runningProcesses.delete(projectId);
-    releasePort(port);
-    if (code !== null && code !== 0) {
-      console.log(`Project ${projectId} process exited with code ${code}`);
+  if (meta.useE2B) {
+    // E2B sandbox — start via E2B manager
+    const m = await getE2BManager();
+    if (m.hasE2BSandbox(projectId)) {
+      return { port };
     }
-  });
+    await m.startE2BSandbox(projectId);
+  } else {
+    if (!(await isPortAvailable(port))) {
+      // 端口已被占用，说明 bun dev 进程在后端重启前已在运行，直接重新注册
+      usedPorts.add(port);
+      runningProcesses.set(projectId, { process: null as any, port });
+      console.log(`Project ${projectId} re-registered on existing port ${port}`);
+      return { port };
+    }
+    usedPorts.add(port);
+
+    const child = runBunDev(projectDir, port);
+    runningProcesses.set(projectId, { process: child, port });
+
+    child.on("exit", (code) => {
+      runningProcesses.delete(projectId);
+      releasePort(port);
+      if (code !== null && code !== 0) {
+        console.log(`Project ${projectId} process exited with code ${code}`);
+      }
+    });
+  }
 
   // (Re)start pi sidecar only if no live container is registered.
   // runningContainers is authoritative — recoverPiContainers() populates it
@@ -519,13 +569,21 @@ export async function startProject(projectId: string): Promise<{ port: number }>
 
 export async function stopProject(projectId: string): Promise<void> {
   const running = runningProcesses.get(projectId);
-  if (!running) {
-    throw new Error(`Project not running: ${projectId}`);
-  }
+  const store = await loadProjectsStore();
+  const meta = store[projectId];
 
-  try { running.process?.kill("SIGTERM"); } catch (_) {}
-  releasePort(running.port);
-  runningProcesses.delete(projectId);
+  if (meta?.useE2B) {
+    // Stop E2B sandbox
+    const m = await getE2BManager();
+    await m.stopE2BSandbox(projectId);
+  } else {
+    if (!running) {
+      throw new Error(`Project not running: ${projectId}`);
+    }
+    try { running.process?.kill("SIGTERM"); } catch (_) {}
+    releasePort(running.port);
+    runningProcesses.delete(projectId);
+  }
 
   // Tear down pi sidecar if present. runningContainers is the authoritative
   // in-memory registry; projects.json only stores the hint for recovery.
@@ -539,23 +597,29 @@ export async function stopProject(projectId: string): Promise<void> {
     }
   }
   // Clear the recovery hint regardless of stop outcome.
-  const store = await loadProjectsStore();
-  const meta = store[projectId];
   if (meta) {
     meta.piContainerId = undefined;
     meta.piPort = undefined;
     await saveProjectsStore(store);
   }
 
-  console.log(`Stopped project ${projectId}, released port ${running.port}`);
+  console.log(`Stopped project ${projectId}`);
 }
 
 export async function deleteProject(projectId: string): Promise<void> {
-  const running = runningProcesses.get(projectId);
-  if (running) {
-    try { running.process?.kill("SIGTERM"); } catch (_) {}
-    releasePort(running.port);
-    runningProcesses.delete(projectId);
+  const store = await loadProjectsStore();
+  const meta = store[projectId];
+
+  if (meta?.useE2B) {
+    const m = await getE2BManager();
+    await m.stopE2BSandbox(projectId);
+  } else {
+    const running = runningProcesses.get(projectId);
+    if (running) {
+      try { running.process?.kill("SIGTERM"); } catch (_) {}
+      releasePort(running.port);
+      runningProcesses.delete(projectId);
+    }
   }
 
   // runningContainers is authoritative; stop pi sidecar if present.
@@ -568,7 +632,6 @@ export async function deleteProject(projectId: string): Promise<void> {
       console.warn(`[project] failed to stop pi container for ${projectId}:`, msg);
     }
   }
-  const store = await loadProjectsStore();
   delete store[projectId];
   await saveProjectsStore(store);
   clearProjectModelCache(projectId);

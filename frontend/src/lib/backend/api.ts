@@ -23,6 +23,7 @@ export interface Container {
   githubRepo?: string;
   githubBranch?: string;
   vercelUrl?: string;
+  useE2B?: boolean;
 }
 
 export interface ToolCall {
@@ -301,6 +302,44 @@ export async function deleteContainer(
     { success: boolean } & DeleteContainerResponse
   >(`/containers/${containerId}`, { method: "DELETE" });
   return response;
+}
+
+// E2B sandbox API
+
+export interface E2BPreviewUrlResponse {
+  success: boolean;
+  previewUrl: string;
+  sandboxId: string;
+  status: string;
+}
+
+export interface E2BStartResponse {
+  success: boolean;
+  sandboxId: string;
+  previewUrl: string;
+  status: string;
+}
+
+export async function getE2BPreviewUrl(
+  containerId: string
+): Promise<E2BPreviewUrlResponse> {
+  return fetchApi(`/e2b/${containerId}/preview-url`);
+}
+
+export async function startE2BSandbox(
+  containerId: string,
+  forceRestart = false
+): Promise<E2BStartResponse> {
+  return fetchApi(`/e2b/${containerId}/sandbox`, {
+    method: "POST",
+    body: JSON.stringify({ forceRestart }),
+  });
+}
+
+export async function stopE2BSandbox(
+  containerId: string
+): Promise<{ success: boolean; status: string }> {
+  return fetchApi(`/e2b/${containerId}/sandbox`, { method: "DELETE" });
 }
 
 export interface DeployResponse {

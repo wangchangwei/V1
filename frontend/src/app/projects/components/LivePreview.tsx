@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Container, getContainers, startContainer } from "../../../lib/backend/api";
+import { Container, getContainers, startContainer, startE2BSandbox } from "../../../lib/backend/api";
 
 interface LivePreviewProps {
   containerId: string;
@@ -49,7 +49,11 @@ export const LivePreview = ({
     setIsStarting(true);
     setStartError(null);
     try {
-      await startContainer(containerId);
+      if (container?.useE2B) {
+        await startE2BSandbox(containerId);
+      } else {
+        await startContainer(containerId);
+      }
     } catch (err) {
       setStartError(err instanceof Error ? err.message : "Failed to start container");
     } finally {

@@ -4,6 +4,7 @@ import chatRoutes from "./routes/chat";
 import containerRoutes from "./routes/containers";
 import deployRoutes from "./routes/deploy";
 import promptRoutes from "./routes/prompts";
+import e2bRoutes from "./routes/e2b";
 import { recoverRunningProjects } from "./services/project";
 import { recoverPiContainers } from "./services/piContainerManager";
 
@@ -37,6 +38,7 @@ app.use("/containers", containerRoutes);
 app.use("/chat", chatRoutes);
 app.use("/deploy", deployRoutes);
 app.use("/prompts", promptRoutes);
+app.use("/e2b", e2bRoutes);
 
 const PORT = Number(process.env.PORT || 4002);
 
