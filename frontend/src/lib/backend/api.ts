@@ -20,6 +20,9 @@ export interface Container {
   }>;
   labels: Record<string, string>;
   displayName?: string;
+  githubRepo?: string;
+  githubBranch?: string;
+  vercelUrl?: string;
 }
 
 export interface ToolCall {
@@ -201,6 +204,58 @@ export async function importFromGitHub(githubUrl: string, branch?: string): Prom
     {
       method: "POST",
       body: JSON.stringify({ githubUrl, branch: branch || undefined }),
+    }
+  );
+  return response;
+}
+
+export async function pushToGitHub(containerId: string, repoUrl: string, token: string, branch?: string): Promise<{ success: boolean; error?: string }> {
+  const response = await fetchApi<{ success: boolean; error?: string }>(
+    `/containers/${containerId}/push/github`,
+    {
+      method: "POST",
+      body: JSON.stringify({ repoUrl, token, branch: branch || "main" }),
+    }
+  );
+  return response;
+}
+
+export async function getProjectGithub(containerId: string): Promise<{ success: boolean; repo?: string; branch?: string }> {
+  try {
+    const response = await fetchApi<{ success: boolean; repo?: string; branch?: string }>(
+      `/containers/${containerId}/github`
+    );
+    return response;
+  } catch (err) {
+    // The backend route 404s when the project has no GitHub binding (or the
+    // store can't be read for that id). Both call sites treat the absence of
+    // `repo` as the empty state, so collapse the 404 into a normal success
+    // instead of letting it surface as a console error on every project page
+    // load. Any other failure (5xx, network, timeout) still propagates.
+    if (err instanceof Error && /\b404\b/.test(err.message)) {
+      return { success: true };
+    }
+    throw err;
+  }
+}
+
+export async function connectGitHub(containerId: string, repoUrl: string, token: string, branch?: string): Promise<{ success: boolean; error?: string }> {
+  const response = await fetchApi<{ success: boolean; error?: string }>(
+    `/containers/${containerId}/github/connect`,
+    {
+      method: "POST",
+      body: JSON.stringify({ repoUrl, token, branch: branch || "main" }),
+    }
+  );
+  return response;
+}
+
+export async function gitCommit(containerId: string, message: string): Promise<{ success: boolean; error?: string }> {
+  const response = await fetchApi<{ success: boolean; error?: string }>(
+    `/containers/${containerId}/git/commit`,
+    {
+      method: "POST",
+      body: JSON.stringify({ message }),
     }
   );
   return response;

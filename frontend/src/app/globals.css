@@ -17,8 +17,8 @@
 }
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #faf9f8;
+  --foreground: #1a1a1a;
 }
 
 @theme inline {
@@ -26,13 +26,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
@@ -73,7 +66,7 @@ body {
 
 /* Markdown rendering inside the chat (dark theme). */
 .chat-markdown {
-  color: rgb(243, 244, 246);
+  color: rgb(26, 26, 26);
   line-height: 1.6;
   font-size: 0.875rem;
 }
@@ -92,7 +85,7 @@ body {
 .chat-markdown h4,
 .chat-markdown h5,
 .chat-markdown h6 {
-  color: white;
+  color: rgb(0, 0, 0);
   font-weight: 600;
   margin-top: 0.75rem;
   margin-bottom: 0.25rem;
@@ -105,21 +98,21 @@ body {
 .chat-markdown h6 { font-size: 0.875rem; }
 
 .chat-markdown strong {
-  color: white;
+  color: rgb(0, 0, 0);
   font-weight: 600;
 }
 
 .chat-markdown em {
-  color: rgb(229, 231, 235);
+  color: rgb(75, 85, 99);
   font-style: italic;
 }
 
 .chat-markdown a {
-  color: rgb(96, 165, 250);
+  color: rgb(37, 99, 235);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.chat-markdown a:hover { color: rgb(147, 197, 253); }
+.chat-markdown a:hover { color: rgb(29, 78, 216); }
 
 .chat-markdown ul,
 .chat-markdown ol {
@@ -132,16 +125,16 @@ body {
 .chat-markdown li > p { margin: 0; }
 
 .chat-markdown blockquote {
-  border-left: 3px solid rgb(75, 85, 99);
+  border-left: 3px solid rgb(209, 213, 219);
   padding: 0.125rem 0 0.125rem 0.75rem;
-  color: rgb(209, 213, 219);
+  color: rgb(107, 114, 128);
   font-style: italic;
   margin: 0.5rem 0;
 }
 
 .chat-markdown hr {
   border: 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
   margin: 0.75rem 0;
 }
 
@@ -150,36 +143,36 @@ body {
   border-collapse: collapse;
   margin: 0.5rem 0;
   font-size: 0.8125rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 0.375rem;
   overflow: hidden;
 }
 .chat-markdown thead {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.05);
 }
 .chat-markdown th,
 .chat-markdown td {
   padding: 0.375rem 0.625rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.08);
   text-align: left;
   vertical-align: top;
 }
 .chat-markdown th {
   font-weight: 600;
-  color: white;
+  color: rgb(0, 0, 0);
 }
 .chat-markdown tbody tr:nth-child(even) {
-  background: rgba(255, 255, 255, 0.025);
+  background: rgba(0, 0, 0, 0.025);
 }
 
 /* Inline code rendered by react-markdown (fenced blocks are extracted to
    <CollapsibleCode> by splitByCodeBlocks before this component sees them). */
 .chat-inline-code {
-  background: rgba(75, 85, 99, 0.6);
-  color: rgb(229, 231, 235);
+  background: rgba(0, 0, 0, 0.05);
+  color: rgb(26, 26, 26);
   padding: 0.0625rem 0.375rem;
   border-radius: 0.25rem;
-  border: 1px solid rgba(107, 114, 128, 0.3);
+  border: 1px solid rgba(0, 0, 0, 0.1);
   font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
   font-size: 0.8125rem;
 }

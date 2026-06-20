@@ -1,9 +1,16 @@
 import express from "express";
+import path from "path";
+import fs from "fs/promises";
+import { exec } from "child_process";
+import { promisify } from "util";
 import * as projectService from "../services/project";
+import { PROJECTS_DIR } from "../services/project";
 import * as exportService from "../services/export";
 import * as fileService from "../services/file";
 import * as packageService from "../services/package";
 import * as importService from "../services/import";
+
+const execAsync = promisify(exec);
 
 const router = express.Router();
 
@@ -304,6 +311,177 @@ router.post("/:containerId/dependencies", async (req, res) => {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
     });
+  }
+});
+
+// 推送到 GitHub
+//@ts-ignore
+router.post("/:containerId/push/github", async (req, res) => {
+  const { containerId } = req.params;
+  const { repoUrl, token, branch } = req.body;
+
+  if (!repoUrl || typeof repoUrl !== "string") {
+    return res.status(400).json({ success: false, error: "repoUrl is required" });
+  }
+  if (!token || typeof token !== "string") {
+    return res.status(400).json({ success: false, error: "token is required" });
+  }
+
+  const projectDir = path.join(PROJECTS_DIR, containerId);
+  try {
+    await fs.access(projectDir);
+  } catch {
+    return res.status(404).json({ success: false, error: "Project not found" });
+  }
+
+  try {
+    // 判断是否已是 git 仓库
+    let isGitRepo = false;
+    try {
+      await fs.access(path.join(projectDir, ".git"));
+      isGitRepo = true;
+    } catch { isGitRepo = false; }
+
+    const normalizedRepo = repoUrl.trim().replace(/\.git$/, "");
+    const authRepoUrl = `https://${token}@github.com/${normalizedRepo.replace("https://github.com/", "")}.git`;
+
+    if (isGitRepo) {
+      // 已有仓库，直接 push
+      await execAsync(`git remote set-url origin "${authRepoUrl}"`, { cwd: projectDir });
+      await execAsync(`git checkout ${branch || "main"} 2>/dev/null || git checkout -b ${branch || "main"}`, { cwd: projectDir });
+      await execAsync(`git add -A && git commit -m "Update from V1" --allow-empty`, { cwd: projectDir });
+      await execAsync(`git push -u origin ${branch || "main"} --force`, { cwd: projectDir, timeout: 60000 });
+    } else {
+      // 新建 git 仓库
+      await execAsync(`git init`, { cwd: projectDir });
+      await execAsync(`git remote add origin "${authRepoUrl}"`, { cwd: projectDir });
+      await execAsync(`git checkout -b ${branch || "main"}`, { cwd: projectDir });
+      await execAsync(`git add -A && git commit -m "Initial commit from V1"`, { cwd: projectDir });
+      await execAsync(`git push -u origin ${branch || "main"}`, { cwd: projectDir, timeout: 60000 });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error instanceof Error ? error.message : "Push failed" });
+  }
+});
+
+// Git Commit
+//@ts-ignore
+router.post("/:containerId/git/commit", async (req, res) => {
+  const { containerId } = req.params;
+  const { message } = req.body;
+  if (!message || typeof message !== "string") {
+    return res.status(400).json({ success: false, error: "message is required" });
+  }
+  const projectDir = path.join(PROJECTS_DIR, containerId);
+  try {
+    await fs.access(projectDir);
+  } catch {
+    return res.status(404).json({ success: false, error: "Project not found" });
+  }
+  try {
+    let isGitRepo = false;
+    try {
+      await fs.access(path.join(projectDir, ".git"));
+      isGitRepo = true;
+    } catch { isGitRepo = false; }
+    if (!isGitRepo) {
+      await execAsync(`git init`, { cwd: projectDir });
+    }
+    await execAsync(`git add -A`, { cwd: projectDir });
+    await execAsync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd: projectDir });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error instanceof Error ? error.message : "Commit failed" });
+  }
+});
+
+// Git Pull
+//@ts-ignore
+router.post("/:containerId/git/pull", async (req, res) => {
+  const { containerId } = req.params;
+  const { repoUrl, token, branch } = req.body;
+  if (!repoUrl || typeof repoUrl !== "string") {
+    return res.status(400).json({ success: false, error: "repoUrl is required" });
+  }
+  if (!token || typeof token !== "string") {
+    return res.status(400).json({ success: false, error: "token is required" });
+  }
+  const projectDir = path.join(PROJECTS_DIR, containerId);
+  try {
+    await fs.access(projectDir);
+  } catch {
+    return res.status(404).json({ success: false, error: "Project not found" });
+  }
+  try {
+    const normalizedRepo = repoUrl.trim().replace(/\.git$/, "");
+    const authRepoUrl = `https://${token}@github.com/${normalizedRepo.replace("https://github.com/", "")}.git`;
+    let isGitRepo = false;
+    try {
+      await fs.access(path.join(projectDir, ".git"));
+      isGitRepo = true;
+    } catch { isGitRepo = false; }
+    if (!isGitRepo) {
+      await execAsync(`git init`, { cwd: projectDir });
+      await execAsync(`git remote add origin "${authRepoUrl}"`, { cwd: projectDir });
+    } else {
+      await execAsync(`git remote set-url origin "${authRepoUrl}"`, { cwd: projectDir });
+    }
+    await execAsync(`git fetch origin`, { cwd: projectDir, timeout: 60000 });
+    await execAsync(`git checkout ${branch || "main"} 2>/dev/null || git checkout -b ${branch || "main"}`, { cwd: projectDir });
+    await execAsync(`git pull origin ${branch || "main"}`, { cwd: projectDir, timeout: 60000 });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error instanceof Error ? error.message : "Pull failed" });
+  }
+});
+
+// 获取 GitHub 连接状态
+//@ts-ignore
+router.get("/:containerId/github", async (req, res) => {
+  const { containerId } = req.params;
+  try {
+    const info = await projectService.getProjectGithub(containerId);
+    res.json({ success: true, ...info });
+  } catch (error) {
+    res.status(404).json({ success: false, error: "Project not found" });
+  }
+});
+
+// 连接 GitHub 仓库
+//@ts-ignore
+router.post("/:containerId/github/connect", async (req, res) => {
+  const { containerId } = req.params;
+  const { repoUrl, token, branch } = req.body;
+  if (!repoUrl || typeof repoUrl !== "string") {
+    return res.status(400).json({ success: false, error: "repoUrl is required" });
+  }
+  if (!token || typeof token !== "string") {
+    return res.status(400).json({ success: false, error: "token is required" });
+  }
+  const projectDir = path.join(PROJECTS_DIR, containerId);
+  try {
+    await fs.access(projectDir);
+  } catch {
+    return res.status(404).json({ success: false, error: "Project not found" });
+  }
+  try {
+    const normalizedRepo = repoUrl.trim().replace(/\.git$/, "");
+    const authRepoUrl = `https://${token}@github.com/${normalizedRepo.replace("https://github.com/", "")}.git`;
+    let isGitRepo = false;
+    try {
+      await fs.access(path.join(projectDir, ".git"));
+      isGitRepo = true;
+    } catch { isGitRepo = false; }
+    if (!isGitRepo) {
+      await execAsync(`git init`, { cwd: projectDir });
+    }
+    await execAsync(`git remote set-url origin "${authRepoUrl}"`, { cwd: projectDir });
+    await projectService.setProjectGithub(containerId, normalizedRepo, branch || "main");
+    res.json({ success: true, repo: normalizedRepo, branch: branch || "main" });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error instanceof Error ? error.message : "Connect failed" });
   }
 });
 

@@ -18,13 +18,14 @@
     "back": "Back",
     "start": "Start",
     "stop": "Stop",
-    "retry": "Retry"
+    "retry": "Retry",
+    "settings": "Settings"
   },
   "home": {
     "title": "What do you want to build?",
     "placeholder": "Ask V1 to build...",
     "loading": "Loading projects...",
-    "loadFailed": "加载失败",
+    "loadFailed": "Load failed",
     "noProjects": "No projects yet",
     "noProjectsHint": "Use the prompt above to create your first project with AI assistance.",
     "createFirst": "Create Your First Project",
@@ -37,11 +38,22 @@
     "open": "Open Project",
     "noProject": "No project selected",
     "rename": "Rename",
-    "enterName": "Enter project name"
+    "enterName": "Enter project name",
+    "yourProjects": "Your Projects",
+    "manageHint": "Manage and access your V1 projects."
   },
   "templates": {
     "title": "Templates",
-    "subtitle": "Start fast with ready-made templates"
+    "subtitle": "Start fast with ready-made templates",
+    "projects": "Projects",
+    "templates": "Templates",
+    "getStarted": "Get started instantly with popular frameworks and tools.",
+    "footer": {
+      "copyright": "© 2025 changwei. Build the future, one container at a time.",
+      "terms": "Terms",
+      "privacy": "Privacy",
+      "status": "Status"
+    }
   },
   "styles": {
     "chooseStyle": "Choose visual style",
@@ -57,7 +69,20 @@
     "editorial": "Editorial",
     "cyberpunk": "Cyberpunk",
     "softUi": "Soft UI",
-    "aiNative": "AI-Native"
+    "aiNative": "AI-Native",
+    "accessibleEthical": "Accessible & Ethical",
+    "auroraUi": "Aurora UI",
+    "flatDesign": "Flat Design",
+    "hyperrealism": "Hyperrealism",
+    "inclusiveDesign": "Inclusive Design",
+    "liquidGlass": "Liquid Glass",
+    "microInteractions": "Micro-interactions",
+    "motionDriven": "Motion Driven",
+    "retroFuturism": "Retro Futurism",
+    "skeuomorphism": "Skeuomorphism",
+    "softUiEvolution": "Soft UI Evolution",
+    "vibrantBlock": "Vibrant Block",
+    "zeroInterface": "Zero Interface"
   },
   "import": {
     "title": "Import Project",
@@ -140,5 +165,77 @@
     "zh": "中文",
     "switchLabel": "Change language",
     "switchAria": "Change language"
+  },
+  "settings": {
+    "title": "Project Settings",
+    "subtitle": "Configure integrations and advanced options for this project.",
+    "vercel": {
+      "title": "Deploy to Vercel",
+      "deploySuccess": "Deployed successfully!",
+      "placeholder": "Vercel token (e.g. xxxxxxxxxx)",
+      "enterToken": "Enter your Vercel token to deploy this project.",
+      "cancel": "Cancel",
+      "deploy": "Deploy",
+      "deploying": "Deploying...",
+      "done": "Done"
+    },
+    "github": {
+      "title": "GitHub",
+      "connected": "Connected",
+      "connectPrompt": "Connect a GitHub repository to enable Push and Pull operations in the editor toolbar.",
+      "repoLabel": "Repository URL",
+      "repoPlaceholder": "https://github.com/user/repo",
+      "branchLabel": "Branch",
+      "branchPlaceholder": "main",
+      "tokenLabel": "Personal Access Token",
+      "tokenPlaceholder": "ghp_xxxxxxxxxxxxxxxxxxxx",
+      "pushLabel": "Push to GitHub (token required)",
+      "push": "Push to GitHub",
+      "pushing": "Pushing...",
+      "connect": "Connect GitHub",
+      "connecting": "Connecting..."
+    },
+    "back": "Back to project",
+    "needHelp": "Need help?"
+  },
+  "help": {
+    "title": "Integration Help",
+    "subtitle": "Learn how to configure Vercel and GitHub integrations for your project.",
+    "back": "Back to Settings",
+    "vercel": {
+      "title": "Deploy to Vercel",
+      "step1": "Sign in to Vercel",
+      "step1Desc": "Log in to your Vercel account at vercel.com",
+      "step2": "Go to Settings",
+      "step2Desc": "Click on your profile avatar in the top-right corner and select \"Settings\".",
+      "step3": "Navigate to Tokens",
+      "step3Desc": "In the left sidebar, click on \"Tokens\" under the \"Security\" section.",
+      "step4": "Create a new token",
+      "step4Desc": "Click \"Create\" and give your token a name (e.g., \"Pi Project\"). Set the expiration as needed.",
+      "step5": "Copy the token",
+      "step5Desc": "Once created, copy the token immediately. It will only be shown once.",
+      "step6": "Paste into Pi",
+      "step6Desc": "Return to the Settings page, paste your token, and click Deploy.",
+      "note": "Note",
+      "noteDesc": "Vercel tokens are personal access tokens. They allow deployments from any project linked to your Vercel account. Keep your token secure and never share it publicly."
+    },
+    "github": {
+      "title": "GitHub",
+      "step1": "Create a GitHub repository",
+      "step1Desc": "If you don't have one, create a new repository at github.com/new. Make sure it's either public or private with your account.",
+      "step2": "Generate a Personal Access Token",
+      "step2Desc": "Go to GitHub Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token.",
+      "step3": "Configure token permissions",
+      "step3Desc": "Select the following scopes:",
+      "step3Scope": "repo — Full control of private repositories (to push and pull)",
+      "step4": "Copy and save the token",
+      "step4Desc": "Copy the generated token. You'll need to paste it into Pi when connecting.",
+      "step5": "Enter repository URL and branch",
+      "step5Desc": "In the Settings page, enter your repository URL (e.g., https://github.com/username/repo) and the branch name (default: main).",
+      "step6": "Click Connect",
+      "step6Desc": "Paste your token and click \"Connect GitHub\". Once connected, you can push code changes directly from the editor toolbar.",
+      "security": "Token Security",
+      "securityDesc": "Your token is stored locally and only used to authenticate with GitHub. It is never sent to our servers. If you believe your token has been compromised, revoke it immediately from GitHub Settings."
+    }
   }
 }

@@ -11,11 +11,15 @@ import { useTranslations } from "next-intl";
 interface ProjectPromptInterfaceProps {
   selectedTemplate: string;
   onTemplateChange: (template: string) => void;
+  selectedStyle: string;
+  onStyleChange: (style: string) => void;
 }
 
 export const ProjectPromptInterface = ({
   selectedTemplate,
   onTemplateChange,
+  selectedStyle,
+  onStyleChange,
 }: ProjectPromptInterfaceProps) => {
   const t = useTranslations("home");
   const ts = useTranslations("styles");
@@ -24,7 +28,6 @@ export const ProjectPromptInterface = ({
   const [showCommunityDropdown, setShowCommunityDropdown] = useState(false);
   const [showStyleDropdown, setShowStyleDropdown] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
-  const [selectedStyle, setSelectedStyle] = useState("Default");
   const router = useRouter();
 
   const handlePromptSubmit = async () => {
@@ -79,7 +82,7 @@ export const ProjectPromptInterface = ({
   };
 
   const handleStyleSelect = (name: string) => {
-    setSelectedStyle(name);
+    onStyleChange(name);
     setShowStyleDropdown(false);
   };
 
@@ -124,7 +127,7 @@ export const ProjectPromptInterface = ({
       <div className="text-center mb-10">
         <h1
           style={{ fontFamily: "Suisse" }}
-          className="text-2xl font-semibold mb-6 bg-gradient-to-r from-white via-gray-100 to-gray-300 bg-clip-text text-transparent"
+          className="text-2xl font-semibold mb-6 text-[#1a1a1a]"
         >
           {t("title")}
         </h1>
@@ -133,7 +136,7 @@ export const ProjectPromptInterface = ({
       <div className="group/form-container content-center relative mx-auto w-full max-w-5xl mb-16">
         <div className="relative z-10 flex w-full flex-col">
           <div className="rounded-b-xl">
-            <form className="focus-within:border-gray-500/60 bg-gray-900/30 border-gray-700/30 relative rounded-2xl border shadow-[0_8px_32px_rgba(0,0,0,0.12)] transition-all duration-300 backdrop-blur-xl bg-gradient-to-br from-white/[0.08] to-white/[0.02]">
+            <form className="focus-within:border-[#cccccc] bg-white border-[#e5e5e5] relative rounded-2xl border shadow-sm transition-all duration-300">
               <div className="relative z-10 grid min-h-0 rounded-2xl">
                 <label className="sr-only" htmlFor="chat-main-textarea">
                   Chat Input
@@ -147,18 +150,18 @@ export const ProjectPromptInterface = ({
                   onChange={(e) => setPromptInput(e.target.value)}
                   onKeyDown={handlePromptKeyDown}
                   disabled={isCreatingFromPrompt}
-                  className="resize-none overflow-auto w-full flex-1 bg-transparent p-4 text-sm outline-none ring-0 placeholder:text-gray-400 text-white disabled:opacity-50"
+                  className="resize-none overflow-auto w-full flex-1 bg-transparent p-4 text-sm outline-none ring-0 placeholder:text-[#888888] text-[#1a1a1a] disabled:opacity-50"
                   style={{
-                    height: "240px",
-                    minHeight: "240px",
-                    maxHeight: "384px",
+                    height: "168px",
+                    minHeight: "168px",
+                    maxHeight: "270px",
                   }}
                 />
                 <div className="flex items-center gap-3 px-4 pb-3">
                   <div className="flex items-center gap-2">
                     <div className="relative">
                       <button
-                        className="flex items-center gap-2 px-3 py-1.5 bg-gray-800/20 hover:bg-gray-700/30 border border-gray-600/20 hover:border-gray-500/30 rounded-lg text-xs font-medium text-gray-300 hover:text-white transition-all duration-300 backdrop-blur-md bg-gradient-to-r from-white/[0.05] to-transparent cursor-pointer"
+                        className="flex items-center gap-2 px-3 py-1.5 bg-[#faf9f8] hover:bg-[#f1f0ef] border border-[#e5e5e5] rounded-lg text-xs font-medium text-[#444444] transition-all duration-300 cursor-pointer"
                         type="button"
                         onClick={() => {
                           setShowCommunityDropdown(!showCommunityDropdown);
@@ -192,7 +195,7 @@ export const ProjectPromptInterface = ({
                         <div
                           role="listbox"
                           aria-label="Template"
-                          className="absolute top-full left-0 mt-2 w-48 bg-gray-900/90 backdrop-blur-xl border border-gray-600/30 rounded-lg shadow-xl z-50 bg-gradient-to-br from-white/[0.08] to-white/[0.02]"
+                          className="absolute top-full left-0 mt-2 w-48 bg-white border border-[#e5e5e5] rounded-lg shadow-md z-50"
                         >
                           {communityOptions.map((option) => (
                             <button
@@ -200,7 +203,7 @@ export const ProjectPromptInterface = ({
                               role="option"
                               aria-selected={selectedTemplate === option}
                               onClick={() => handleCommunitySelect(option)}
-                              className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/10 first:rounded-t-lg last:rounded-b-lg transition-all duration-200 cursor-pointer"
+                              className="w-full text-left px-3 py-2 text-sm text-[#444444] hover:bg-[#faf9f8] hover:text-[#1a1a1a] first:rounded-t-lg last:rounded-b-lg transition-all duration-200 cursor-pointer"
                             >
                               {option}
                             </button>
@@ -211,7 +214,7 @@ export const ProjectPromptInterface = ({
 
                     <div className="relative">
                       <button
-                        className="flex items-center gap-2 px-3 py-1.5 bg-gray-800/20 hover:bg-gray-700/30 border border-gray-600/20 hover:border-gray-500/30 rounded-lg text-xs font-medium text-gray-300 hover:text-white transition-all duration-300 backdrop-blur-md bg-gradient-to-r from-white/[0.05] to-transparent cursor-pointer"
+                        className="flex items-center gap-2 px-3 py-1.5 bg-[#faf9f8] hover:bg-[#f1f0ef] border border-[#e5e5e5] rounded-lg text-xs font-medium text-[#444444] transition-all duration-300 cursor-pointer"
                         type="button"
                         onClick={() => {
                           setShowStyleDropdown(!showStyleDropdown);
@@ -245,7 +248,7 @@ export const ProjectPromptInterface = ({
                         <div
                           role="listbox"
                           aria-label={ts("visualStyle")}
-                          className="absolute top-full left-0 mt-2 w-52 max-h-[280px] overflow-y-auto bg-gray-900/90 backdrop-blur-xl border border-gray-600/30 rounded-lg shadow-xl z-50 bg-gradient-to-br from-white/[0.08] to-white/[0.02]"
+                          className="absolute top-full left-0 mt-2 w-52 max-h-[280px] overflow-y-auto bg-white border border-[#e5e5e5] rounded-lg shadow-md z-50"
                         >
                           {STYLES.map((style) => (
                             <button
@@ -253,7 +256,7 @@ export const ProjectPromptInterface = ({
                               role="option"
                               aria-selected={selectedStyle === style.name}
                               onClick={() => handleStyleSelect(style.name)}
-                              className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/10 first:rounded-t-lg last:rounded-b-lg transition-all duration-200 cursor-pointer"
+                              className="w-full text-left px-3 py-2 text-sm text-[#444444] hover:bg-[#faf9f8] hover:text-[#1a1a1a] first:rounded-t-lg last:rounded-b-lg transition-all duration-200 cursor-pointer"
                             >
                               {ts(style.labelKey)}
                             </button>
@@ -265,7 +268,7 @@ export const ProjectPromptInterface = ({
 
                   <div className="ml-auto flex items-center gap-2">
                     <button
-                      className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-all duration-300 backdrop-blur-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="p-2 rounded-lg text-[#888888] hover:text-[#1a1a1a] hover:bg-[#faf9f8] transition-all duration-300 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       type="button"
                       onClick={handleSparkleClick}
                       disabled={isEnriching || isCreatingFromPrompt}
@@ -279,7 +282,7 @@ export const ProjectPromptInterface = ({
                       )}
                     </button>
                     <button
-                      className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all duration-300 backdrop-blur-sm cursor-pointer"
+                      className="p-2 text-[#888888] hover:text-[#1a1a1a] hover:bg-[#faf9f8] rounded-lg transition-all duration-300 cursor-pointer"
                       type="button"
                       onClick={handleImageClick}
                     >
@@ -288,7 +291,7 @@ export const ProjectPromptInterface = ({
                     <button
                       onClick={handlePromptSubmit}
                       disabled={!promptInput.trim() || isCreatingFromPrompt}
-                      className="flex items-center justify-center w-9 h-9 bg-white/90 text-black hover:bg-white disabled:bg-gray-600/50 disabled:text-gray-400 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl disabled:cursor-not-allowed cursor-pointer backdrop-blur-sm"
+                      className="flex items-center justify-center w-9 h-9 bg-[#1a1a1a] text-white hover:bg-[#333333] disabled:bg-[#e5e5e5] disabled:text-[#888888] rounded-lg transition-all duration-300 shadow-sm disabled:cursor-not-allowed cursor-pointer"
                       type="submit"
                     >
                       {isCreatingFromPrompt ? (

@@ -113,23 +113,23 @@ const ToolCallRow: React.FC<{ toolCall: ToolCall }> = ({ toolCall }) => {
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/5 transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#faf9f8] transition-colors"
       >
         {expanded ? (
-          <ChevronDown className="w-3 h-3 text-white/60" />
+          <ChevronDown className="w-3 h-3 text-[#666666]" />
         ) : (
-          <ChevronRight className="w-3 h-3 text-white/60" />
+          <ChevronRight className="w-3 h-3 text-[#666666]" />
         )}
-        <Icon className={`w-3.5 h-3.5 ${toolCall.ok ? "text-blue-400" : "text-red-400"}`} />
-        <span className={`text-xs font-medium ${toolCall.ok ? "text-blue-300" : "text-red-300"}`}>
+        <Icon className={`w-3.5 h-3.5 ${toolCall.ok ? "text-blue-600" : "text-red-600"}`} />
+        <span className={`text-xs font-medium ${toolCall.ok ? "text-blue-700" : "text-red-700"}`}>
           {label}
         </span>
         {subtitle && (
-          <code className="text-xs text-white/60 font-mono truncate">
+          <code className="text-xs text-[#888888] font-mono truncate">
             {subtitle}
           </code>
         )}
-        <span className="ml-auto text-xs text-white/50">
+        <span className="ml-auto text-xs text-[#888888]">
           {toolCall.ok ? (
             <CheckCircle className="w-3.5 h-3.5 text-green-400" />
           ) : (
@@ -138,7 +138,7 @@ const ToolCallRow: React.FC<{ toolCall: ToolCall }> = ({ toolCall }) => {
         </span>
       </button>
       {expanded && (
-        <div className="border-t border-white/10 px-3 py-2 bg-black/20 space-y-2">
+        <div className="border-t border-[#e5e5e5] px-3 py-2 bg-white space-y-2">
           {(() => {
             const parsed = safeParseArgs(toolCall.args);
             // write_file: show the file content (the actual code change) above
@@ -150,16 +150,16 @@ const ToolCallRow: React.FC<{ toolCall: ToolCall }> = ({ toolCall }) => {
               return (
                 <>
                   <div>
-                    <div className="text-xs text-white/50 mb-1">
+                    <div className="text-xs text-[#888888] mb-1">
                       Content
                     </div>
-                    <pre className="text-xs text-white/80 font-mono whitespace-pre-wrap break-words max-h-64 overflow-auto">
+                    <pre className="text-xs text-[#1a1a1a] font-mono whitespace-pre-wrap break-words max-h-64 overflow-auto">
                       {parsed.content}
                     </pre>
                   </div>
                   <div>
-                    <div className="text-xs text-white/50 mb-1">Result</div>
-                    <pre className="text-xs text-white/80 font-mono whitespace-pre-wrap break-words max-h-64 overflow-auto">
+                    <div className="text-xs text-[#888888] mb-1">Result</div>
+                    <pre className="text-xs text-[#1a1a1a] font-mono whitespace-pre-wrap break-words max-h-64 overflow-auto">
                       {toolCall.result || "(empty)"}
                     </pre>
                   </div>
@@ -169,14 +169,14 @@ const ToolCallRow: React.FC<{ toolCall: ToolCall }> = ({ toolCall }) => {
             // list_files: result is JSON, render compactly
             if (toolCall.name === "list_files") {
               return (
-                <pre className="text-xs text-white/80 font-mono whitespace-pre-wrap break-words max-h-64 overflow-auto">
+                <pre className="text-xs text-[#1a1a1a] font-mono whitespace-pre-wrap break-words max-h-64 overflow-auto">
                   {toolCall.result || "(empty)"}
                 </pre>
               );
             }
             // default: just show the result
             return (
-              <pre className="text-xs text-white/80 font-mono whitespace-pre-wrap break-words max-h-64 overflow-auto">
+              <pre className="text-xs text-[#1a1a1a] font-mono whitespace-pre-wrap break-words max-h-64 overflow-auto">
                 {toolCall.result || "(empty)"}
               </pre>
             );
@@ -200,22 +200,22 @@ const CollapsibleCode: React.FC<{
   const [expanded, setExpanded] = useState(false);
   const label = customLabel ?? (language ? `Code (${language})` : "Code Block");
   return (
-    <div className="my-3 bg-gray-500/10 border border-gray-500/30 rounded-lg overflow-hidden">
+    <div className="my-3 bg-[#faf9f8] border border-[#e5e5e5] rounded-lg overflow-hidden">
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 bg-gray-500/20 px-3 py-2 border-b border-gray-500/30 hover:bg-gray-500/30 transition-colors text-left"
+        className="w-full flex items-center gap-2 bg-[#f1f0ef] px-3 py-2 border-b border-[#e5e5e5] hover:bg-[#e5e5e5] transition-colors text-left"
       >
-        <Code className="w-4 h-4 text-gray-400" />
-        <span className="text-sm font-medium text-gray-400">{label}</span>
-        <span className="ml-auto text-xs text-white/50">
+        <Code className="w-4 h-4 text-[#888888]" />
+        <span className="text-sm font-medium text-[#666666]">{label}</span>
+        <span className="ml-auto text-xs text-[#888888]">
           {expanded ? "▲ 收起" : "▼ 展开"}
         </span>
       </button>
       {expanded && (
         <div className="p-3">
-          <pre className="bg-gray-800/60 rounded p-3 text-xs overflow-x-auto">
-            <code className="text-gray-300">{code.trim()}</code>
+          <pre className="bg-white border border-[#e5e5e5] rounded p-3 text-xs overflow-x-auto">
+            <code className="text-[#1a1a1a]">{code.trim()}</code>
           </pre>
         </div>
       )}
@@ -293,34 +293,27 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, formatMessage
             src="/v1-logo.png"
             alt="Assistant Avatar"
           />
-          <span className="text-sm font-medium text-white/90">Assistant</span>
-          <span className="text-xs text-white/40 ml-auto">
+          <span className="text-sm font-medium text-[#1a1a1a]">Assistant</span>
+          <span className="text-xs text-[#888888] ml-auto">
             {formatTimestamp(message.timestamp)}
           </span>
         </div>
       )}
 
       <div
-        className={`rounded-xl px-4 py-3 text-sm leading-relaxed backdrop-blur-md border shadow-sm relative ${
+        className={`rounded-xl px-4 py-3 text-sm leading-relaxed border shadow-sm relative ${
           message.role === "user"
-            ? "bg-blue-600/20 border-blue-500/30 text-white ml-8 max-w-[85%]"
-            : "bg-gray-700/60 border-gray-600/40 text-gray-100 w-full"
+            ? "bg-[#1a1a1a] border-[#1a1a1a] text-white ml-8 max-w-[85%]"
+            : "bg-[#faf9f8] border-[#e5e5e5] text-[#1a1a1a] w-full"
         }`}
       >
-        {message.role === "assistant" && (
-          <div className="absolute inset-0 bg-gradient-to-br from-gray-600/10 via-transparent to-gray-700/10 rounded-xl" />
-        )}
-        {message.role === "user" && (
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-transparent to-blue-600/10 rounded-xl" />
-        )}
-
         <div className="relative z-10">
           {message.attachments && message.attachments.length > 0 && (
             <div className="mb-3 flex flex-wrap gap-2">
               {message.attachments.map((attachment, index) => (
                 <div
                   key={index}
-                  className="flex items-center gap-2 bg-black/20 rounded-lg px-3 py-2 border border-white/10"
+                  className="flex items-center gap-2 bg-[#f1f0ef] rounded-lg px-3 py-2 border border-[#e5e5e5]"
                 >
                   {attachment.type === "image" ? (
                     <>
@@ -335,10 +328,10 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, formatMessage
                     <FileText className="w-4 h-4 text-blue-400" />
                   )}
                   <div className="flex flex-col">
-                    <span className="text-xs font-medium truncate max-w-24">
+                    <span className="text-xs font-medium truncate max-w-24 text-[#1a1a1a]">
                       {attachment.name}
                     </span>
-                    <span className="text-xs text-white/60">
+                    <span className="text-xs text-[#888888]">
                       {formatFileSize(attachment.size)}
                     </span>
                   </div>
@@ -357,7 +350,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, formatMessage
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     disabled={isRegenerating}
-                    className="w-full rounded border border-gray-600 bg-gray-800 p-2 text-sm text-white disabled:opacity-60"
+                    className="w-full rounded border border-[#e5e5e5] bg-white p-2 text-sm text-[#1a1a1a] disabled:opacity-60"
                     rows={Math.max(2, draft.split("\n").length)}
                   />
                   <div className="flex gap-2 justify-end">
@@ -368,7 +361,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, formatMessage
                         setDraft(message.content);
                       }}
                       disabled={isRegenerating}
-                      className="rounded bg-gray-700 px-3 py-1 text-sm text-white hover:bg-gray-600 disabled:opacity-60 disabled:hover:bg-gray-700"
+                      className="rounded bg-[#f1f0ef] px-3 py-1 text-sm text-[#1a1a1a] hover:bg-[#e5e5e5] disabled:opacity-60 disabled:hover:bg-[#f1f0ef]"
                     >
                       <X size={14} className="inline" /> Cancel
                     </button>
@@ -379,7 +372,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, formatMessage
                         onEdit?.(draft);
                       }}
                       disabled={isRegenerating}
-                      className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-500 disabled:opacity-60 disabled:hover:bg-blue-600 flex items-center gap-1"
+                      className="rounded bg-[#1a1a1a] px-3 py-1 text-sm text-white hover:bg-[#333333] disabled:opacity-60 disabled:hover:bg-[#1a1a1a] flex items-center gap-1"
                     >
                       {isRegenerating ? (
                         <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -401,7 +394,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, formatMessage
                         setDraft(message.content);
                         setIsEditing(true);
                       }}
-                      className="absolute -right-2 -top-2 hidden rounded bg-gray-700 p-1 text-white opacity-0 transition-opacity group-hover:block group-hover:opacity-100 hover:bg-gray-600"
+                      className="absolute -right-2 -top-2 hidden rounded bg-white border border-[#e5e5e5] p-1 text-[#666666] opacity-0 transition-opacity group-hover:block group-hover:opacity-100 hover:text-[#1a1a1a] hover:bg-[#faf9f8]"
                     >
                       <Pencil size={12} />
                     </button>
@@ -411,13 +404,13 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, formatMessage
             </div>
           ) : (
             <div className="space-y-2">
-              {toolCalls.length > 0 && (
+              {/*{toolCalls.length > 0 && (
                 <div>
                   {toolCalls.map((tc) => (
                     <ToolCallRow key={tc.id} toolCall={tc} />
                   ))}
                 </div>
-              )}
+              )}*/}
               {message.content && (
                 <div className="chat-markdown max-w-none">
                   {splitByCodeBlocks(message.content).map((seg, i) =>
@@ -460,7 +453,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message, formatMessage
       </div>
 
       {message.role === "user" && (
-        <span className="text-xs text-white/40 mt-1.5 mr-2">
+        <span className="text-xs text-[#888888] mt-1.5 mr-2">
           {formatTimestamp(message.timestamp)}
         </span>
       )}

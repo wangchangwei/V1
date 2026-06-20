@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { deployToVercel } from "../services/deploy";
-import { getProjectByIdOrUuid } from "../services/project";
+import { getProjectByIdOrUuid, setProjectVercelUrl } from "../services/project";
 
 const router = Router();
 
@@ -18,6 +18,9 @@ router.post("/:containerId", async (req, res) => {
     await getProjectByIdOrUuid(containerId);
 
     const result = await deployToVercel(containerId, vercelToken.trim());
+    if (result.url) {
+      await setProjectVercelUrl(containerId, result.url);
+    }
     res.json({ success: true, ...result });
   } catch (error) {
     console.error("[deploy] Failed:", error);

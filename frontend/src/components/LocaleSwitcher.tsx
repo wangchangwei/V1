@@ -33,7 +33,7 @@ export function LocaleSwitcher() {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 text-gray-300 hover:text-white hover:bg-white/10 rounded-md transition-all duration-200 text-xs font-medium cursor-pointer"
+        className="flex items-center gap-1.5 px-2.5 py-1.5 text-gray-400 hover:text-[#1a1a1a] hover:bg-[#f1f0ef] rounded-md transition-all duration-200 text-xs font-medium cursor-pointer"
         aria-label={t("switchAria")}
         aria-haspopup="listbox"
         aria-expanded={open}

@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, FolderOpen, MoreHorizontal, Pencil, Play, Square, Trash2 } from "lucide-react";
+import { Calendar, FolderOpen, Globe, Github, MoreHorizontal, Pencil, Play, Settings, Square, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
@@ -142,8 +142,8 @@ export const ProjectsGrid = () => {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
-          <span className="text-white/70 font-medium">{t("loading")}</span>
+          <div className="w-8 h-8 border-2 border-[#e5e5e5] border-t-[#1a1a1a] rounded-full animate-spin" />
+          <span className="text-[#666666] font-medium">{t("loading")}</span>
         </div>
       </div>
     );
@@ -152,14 +152,14 @@ export const ProjectsGrid = () => {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-6">
-        <div className="bg-red-500/10 backdrop-blur-md rounded-2xl border border-red-500/20 p-8 text-center shadow-xl max-w-md">
-          <div className="text-red-400 text-xl font-semibold mb-2">
+        <div className="bg-red-50 rounded-2xl border border-red-100 p-8 text-center shadow-sm max-w-md">
+          <div className="text-red-600 text-xl font-semibold mb-2">
             {t("loadFailed")}
           </div>
-          <div className="text-white/60 mb-4">{error}</div>
+          <div className="text-[#666666] mb-4">{error}</div>
           <button
             onClick={fetchContainers}
-            className="px-6 py-3 bg-white text-black hover:bg-gray-100 rounded-lg transition-all duration-200 font-medium shadow-lg hover:shadow-xl cursor-pointer"
+            className="px-6 py-3 bg-white text-[#1a1a1a] border border-[#e5e5e5] hover:bg-[#faf9f8] rounded-lg transition-all duration-200 font-medium shadow-sm cursor-pointer"
           >
             {tc("retry")}
           </button>
@@ -177,9 +177,9 @@ export const ProjectsGrid = () => {
               {dockerError}
             </div>
           )}
-          <div className="w-16 h-16 bg-white/5 backdrop-blur-sm rounded-2xl border border-white/10 flex items-center justify-center mx-auto mb-6">
+          <div className="w-16 h-16 bg-[#faf9f8] rounded-2xl border border-[#e5e5e5] flex items-center justify-center mx-auto mb-6">
             <svg
-              className="w-8 h-8 text-white/50"
+              className="w-8 h-8 text-[#888888]"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -192,15 +192,15 @@ export const ProjectsGrid = () => {
               />
             </svg>
           </div>
-          <h3 className="text-xl font-semibold text-white mb-3">
+          <h3 className="text-xl font-semibold text-[#1a1a1a] mb-3">
             {t("noProjects")}
           </h3>
-          <p className="text-gray-400 mb-6">
+          <p className="text-[#666666] mb-6">
             {t("noProjectsHint")}
           </p>
           <button
             onClick={handleProjectCreated}
-            className="px-6 py-3 bg-white/10 hover:bg-white/15 text-white border border-white/20 hover:border-white/30 rounded-lg transition-all duration-200 font-medium backdrop-blur-sm cursor-pointer"
+            className="px-6 py-3 bg-white hover:bg-[#faf9f8] text-[#1a1a1a] border border-[#e5e5e5] rounded-lg transition-all duration-200 font-medium shadow-sm cursor-pointer"
           >
             {t("createFirst")}
           </button>
@@ -214,27 +214,27 @@ export const ProjectsGrid = () => {
       {containers.map((container) => (
         <div
           key={container.id}
-          className={`group relative bg-gray-900/60 hover:bg-gray-800/70 border border-gray-700/50 hover:border-gray-600/70 rounded-lg p-4 transition-all duration-200 backdrop-blur-sm ${
+          className={`group relative bg-white hover:bg-[#faf9f8] border border-[#e5e5e5] shadow-sm rounded-lg p-4 transition-all duration-200 ${
             dropdownOpen === container.id ? "z-50" : ""
           }`}
         >
           <div className="flex items-center gap-4">
             <div className="relative flex-shrink-0">
-              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-600 rounded-lg flex items-center justify-center shadow-sm">
+              <div className="w-10 h-10 bg-gradient-to-br from-[#1a1a1a] to-[#333333] rounded-lg flex items-center justify-center shadow-sm">
                 <span className="text-white font-bold text-sm">D</span>
               </div>
               <div
-                className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-gray-900 ${
+                className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${
                   container.status === "running"
-                    ? "bg-green-400"
-                    : "bg-gray-500"
+                    ? "bg-green-500"
+                    : "bg-gray-400"
                 }`}
               />
             </div>
 
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-1">
-                <h3 className="text-white font-medium text-base truncate">
+                <h3 className="text-[#1a1a1a] font-medium text-base truncate">
                   {container.displayName ||
                     container.name?.replace("/", "") ||
                     `dec-nextjs-${container.id.slice(0, 8)}`}
@@ -242,15 +242,15 @@ export const ProjectsGrid = () => {
                 <span
                   className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                     container.status === "running"
-                      ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                      : "bg-gray-500/20 text-gray-400 border border-gray-500/30"
+                      ? "bg-green-50 text-green-700 border border-green-200"
+                      : "bg-gray-100 text-[#666666] border border-[#e5e5e5]"
                   }`}
                 >
                   {container.status === "running" ? t("running") : t("exited")}
                 </span>
               </div>
 
-              <div className="flex items-center gap-4 text-sm text-gray-400">
+              <div className="flex items-center gap-4 text-sm text-[#666666]">
                 <div className="flex items-center gap-1">
                   <Calendar className="w-4 h-4" />
                   <span>{t("created")} {formatDate(container.created)}</span>
@@ -259,9 +259,23 @@ export const ProjectsGrid = () => {
                   <span>{t("port")} :{container.assignedPort}</span>
                 )}
                 <span>{t("nextjs")}</span>
+                <div className="flex items-center gap-1.5 ml-1">
+                  <div
+                    title={container.vercelUrl ? `Vercel: ${container.vercelUrl}` : "Not deployed to Vercel"}
+                    className={`w-5 h-5 rounded flex items-center justify-center ${container.vercelUrl ? "text-green-500" : "text-gray-300"}`}
+                  >
+                    <Globe className="w-3.5 h-3.5" />
+                  </div>
+                  <div
+                    title={container.githubRepo ? `GitHub: ${container.githubRepo}` : "Not connected to GitHub"}
+                    className={`w-5 h-5 rounded flex items-center justify-center ${container.githubRepo ? "text-green-500" : "text-gray-300"}`}
+                  >
+                    <Github className="w-3.5 h-3.5" />
+                  </div>
+                </div>
               </div>
               <div
-                className="flex items-center gap-1.5 text-xs text-gray-500 mt-1 font-mono truncate"
+                className="flex items-center gap-1.5 text-xs text-[#888888] mt-1 font-mono truncate"
                 title={`ID: ${container.id}`}
               >
                 <FolderOpen className="w-3.5 h-3.5 flex-shrink-0" />
@@ -273,7 +287,7 @@ export const ProjectsGrid = () => {
               {container.status !== "running" && (
                 <button
                   onClick={() => handleToggleStatus(container)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600/20 hover:bg-green-600/30 text-green-400 border border-green-600/30 hover:border-green-500/50 rounded-md text-sm font-medium transition-all duration-200 cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded-md text-sm font-medium transition-all duration-200 cursor-pointer"
                 >
                   <Play className="w-3.5 h-3.5" />
                   {tc("start")}
@@ -282,14 +296,14 @@ export const ProjectsGrid = () => {
 
               <a
                 href={`/projects/${container.id}`}
-                className="px-4 py-1.5 bg-gray-700/50 hover:bg-gray-600/60 text-white border border-gray-600/50 hover:border-gray-500/70 rounded-md text-sm font-medium transition-all duration-200 cursor-pointer"
+                className="px-4 py-1.5 bg-white hover:bg-[#faf9f8] text-[#1a1a1a] border border-[#e5e5e5] rounded-md text-sm font-medium shadow-sm transition-all duration-200 cursor-pointer"
               >
                 {t("open")}
               </a>
 
               <div className="relative z-[9999]">
                 <button
-                  className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-md transition-all duration-200 cursor-pointer"
+                  className="p-1.5 text-[#888888] hover:text-[#1a1a1a] hover:bg-[#faf9f8] rounded-md transition-all duration-200 cursor-pointer"
                   onClick={(e) => {
                     e.stopPropagation();
                     setDropdownOpen(
@@ -303,7 +317,7 @@ export const ProjectsGrid = () => {
                 {dropdownOpen === container.id && (
                   <div
                     ref={dropdownRef}
-                    className="absolute right-0 top-full mt-1 w-36 bg-gray-800/90 backdrop-blur-xl border border-gray-600/30 rounded-lg shadow-xl z-[9999] py-1"
+                    className="absolute right-0 top-full mt-1 w-36 bg-white border border-[#e5e5e5] rounded-lg shadow-md z-[9999] py-1"
                   >
                     {container.status === "running" ? (
                       <button
@@ -312,7 +326,7 @@ export const ProjectsGrid = () => {
                           handleToggleStatus(container);
                         }}
                         disabled={actionLoading === container.id}
-                        className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700/50 transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
+                        className="w-full text-left px-3 py-2 text-sm text-[#444444] hover:text-[#1a1a1a] hover:bg-[#faf9f8] transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
                       >
                         {actionLoading === container.id ? (
                           <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -328,7 +342,7 @@ export const ProjectsGrid = () => {
                           handleToggleStatus(container);
                         }}
                         disabled={actionLoading === container.id}
-                        className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700/50 transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
+                        className="w-full text-left px-3 py-2 text-sm text-[#444444] hover:text-[#1a1a1a] hover:bg-[#faf9f8] transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
                       >
                         {actionLoading === container.id ? (
                           <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -345,11 +359,20 @@ export const ProjectsGrid = () => {
                         handleRename(container);
                       }}
                       disabled={actionLoading === container.id}
-                      className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-700/50 transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
+                      className="w-full text-left px-3 py-2 text-sm text-[#444444] hover:text-[#1a1a1a] hover:bg-[#faf9f8] transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                       {t("rename")}
                     </button>
+
+                    <a
+                      href={`/projects/${container.id}/settings`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-full text-left px-3 py-2 text-sm text-[#444444] hover:text-[#1a1a1a] hover:bg-[#faf9f8] transition-all duration-200 flex items-center gap-2"
+                    >
+                      <Settings className="w-3.5 h-3.5" />
+                      {tc("settings")}
+                    </a>
 
                     <button
                       onClick={(e) => {
@@ -357,7 +380,7 @@ export const ProjectsGrid = () => {
                         handleDeleteContainer(container);
                       }}
                       disabled={actionLoading === container.id}
-                      className="w-full text-left px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
+                      className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
                     >
                       {actionLoading === container.id ? (
                         <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -375,9 +398,9 @@ export const ProjectsGrid = () => {
       ))}
 
       {renameTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-gray-800 border border-gray-600/40 rounded-xl shadow-2xl w-full max-w-md p-6">
-            <h3 className="text-white font-semibold text-lg mb-4">{t("rename")}</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
+          <div className="bg-white border border-[#e5e5e5] rounded-xl shadow-md w-full max-w-md p-6">
+            <h3 className="text-[#1a1a1a] font-semibold text-lg mb-4">{t("rename")}</h3>
             <input
               type="text"
               value={renameValue}
@@ -388,19 +411,19 @@ export const ProjectsGrid = () => {
               }}
               placeholder={t("enterName")}
               autoFocus
-              className="w-full px-3 py-2 bg-gray-900 border border-gray-600/40 rounded-lg text-white text-sm placeholder:text-gray-500 focus:outline-none focus:border-gray-400 mb-4"
+              className="w-full px-3 py-2 bg-[#faf9f8] border border-[#e5e5e5] rounded-lg text-[#1a1a1a] text-sm placeholder:text-[#888888] focus:outline-none focus:border-[#999999] mb-4"
             />
             <div className="flex items-center justify-end gap-3">
               <button
                 onClick={() => setRenameTarget(null)}
-                className="px-4 py-2 text-sm text-gray-300 hover:text-white transition-colors"
+                className="px-4 py-2 text-sm text-[#666666] hover:text-[#1a1a1a] transition-colors"
               >
                 {tc("cancel")}
               </button>
               <button
                 onClick={handleRenameConfirm}
                 disabled={!renameValue.trim() || actionLoading !== null}
-                className="px-4 py-2 text-sm bg-white text-black hover:bg-gray-100 rounded-lg font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                className="px-4 py-2 text-sm bg-[#1a1a1a] text-white hover:bg-[#333333] rounded-lg font-medium transition-colors disabled:opacity-50 cursor-pointer"
               >
                 {tc("save")}
               </button>

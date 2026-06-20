@@ -90,6 +90,84 @@ export const STYLES: Style[] = [
     promptInjection:
       "Apply an AI-native / conversational visual language: chat surfaces dominate the layout (large message list, streaming-feel typing indicator, message bubbles with role-based color treatment — user right-aligned with subtle accent background, assistant left-aligned with neutral surface), generous padding inside messages, markdown rendering with code blocks in monospace and collapsible, copy button on every code block, suggested follow-up prompts as chip buttons below the latest assistant message, model selector visible, subtle 'thinking' affordance, dark or light surface with high text contrast. Outside the chat, supporting UI (sidebar, header) is minimal and neutral. Icons via lucide-react, never emoji.",
   },
+  {
+    name: "Accessible & Ethical",
+    labelKey: "accessibleEthical",
+    promptInjection:
+      "Apply an accessible and ethical design language: ensure WCAG AA contrast ratios (4.5:1 for normal text, 3:1 for large text), focus indicators on all interactive elements, keyboard navigation support, semantic HTML structure, reduced motion options, alt text for all images, clear error messages with suggestions, forgiving form design with inline validation, voice-first alternatives where possible. Use a clear, legible sans-serif typeface at 16px minimum, generous line-height (1.5+), and avoid relying solely on color to convey information.",
+  },
+  {
+    name: "Aurora UI",
+    labelKey: "auroraUi",
+    promptInjection:
+      "Apply an aurora UI visual language: luminous, atmospheric gradients that shift between cool blues, soft greens, and gentle purples reminiscent of the northern lights, frosted glass panels with backdrop-blur, subtle animated grain texture, soft pulsing glow effects on active elements, rounded corners (16-24px), semi-transparent surfaces layered over animated gradient backgrounds, clean sans-serif typography with generous spacing, and ethereal shadows that feel like light passing through translucent material.",
+  },
+  {
+    name: "Flat Design",
+    labelKey: "flatDesign",
+    promptInjection:
+      "Apply a flat design visual language: solid, vibrant colors with no gradients or drop shadows, simple geometric shapes and iconography, clear typographic hierarchy using a clean sans-serif, high contrast between elements, generous whitespace, two-dimensional layouts without depth cues (no bevels, embossing, or skeuomorphic effects), bold color blocking for section differentiation, and crisp hairline borders to separate content areas.",
+  },
+  {
+    name: "Hyperrealism",
+    labelKey: "hyperrealism",
+    promptInjection:
+      "Apply a hyperrealistic visual language: ultra-detailed photographic imagery with sharp focus and rich texture, seamless shadows and reflections that mimic real-world physics, high dynamic range lighting with precise specular highlights, surfaces that show material grain, wear, and micro-detail, depth of field effects in layered compositions, and photorealistic typography with subtle surface texture. Every element should feel tactile and physically present.",
+  },
+  {
+    name: "Inclusive Design",
+    labelKey: "inclusiveDesign",
+    promptInjection:
+      "Apply an inclusive design visual language: diverse, representative imagery across ethnicities, ages, abilities, and body types, multiple interaction modalities (voice, touch, gesture, keyboard), adaptive layouts that reflow content without loss of meaning, clear language at a 6th-grade reading level with jargon explained, color-blind safe palettes (avoid red/green reliance), gender-neutral iconography and language, time-pressure-free interactions, and personalization options for font size, contrast, and motion preferences.",
+  },
+  {
+    name: "Liquid Glass",
+    labelKey: "liquidGlass",
+    promptInjection:
+      "Apply a liquid glass visual language: translucent, flowing surfaces that appear to merge and separate like molten glass, soft internal reflections and refractions, rounded organic shapes without hard edges, pastel color palette with luminous quality, subtle iridescence and shimmer effects, smooth spring-based animations that feel viscous, layered glass panels with varying opacity, and surface tension effects at the edges of elements.",
+  },
+  {
+    name: "Micro-interactions",
+    labelKey: "microInteractions",
+    promptInjection:
+      "Apply a micro-interaction-driven visual language: every state change (hover, click, toggle, drag) has a purposeful, delightful animation, spring physics for natural bounce and settle, color transitions that communicate feedback (green for success, red for error, yellow for warning), loading states with creative skeleton screens and spinners, toggle switches and checkboxes with satisfying tactile animations, smooth number counters and progress indicators, subtle haptic-feel animations (scale pulse, shake), and toast notifications that slide in with personality.",
+  },
+  {
+    name: "Motion Driven",
+    labelKey: "motionDriven",
+    promptInjection:
+      "Apply a motion-driven visual language: choreography where UI elements animate in purposeful sequences (staggered reveals, orchestrated exits), scroll-driven animations where elements respond to viewport position, parallax depth layers creating spatial hierarchy, animated illustrations and icons, transition animations between routes and states (fade, slide, morph), kinetic typography that breathes and pulses, looping ambient animations for living interfaces, and spring-curve easing throughout (no linear or ease-in-out).",
+  },
+  {
+    name: "Retro Futurism",
+    labelKey: "retroFuturism",
+    promptInjection:
+      "Apply a retro-futurism visual language: vintage sci-fi aesthetics merging 1950s optimism with futuristic technology, chrome and metallic surfaces, warm accent colors (orange, teal, mustard) against dark backgrounds, starburst and sunburst decorative elements, rounded terminal windows, scanline textures and CRT-style glow effects, space-age typography with rounded geometric letterforms, star charts and orbital diagrams as decorative motifs, and a sense of wonder and possibility.",
+  },
+  {
+    name: "Skeuomorphism",
+    labelKey: "skeuomorphism",
+    promptInjection:
+      "Apply a skeuomorphic visual language: realistic material textures (leather, wood grain, brushed metal, fabric), embossed and debossed text with subtle shadows, stitched borders and riveted edges, physical knobs, switches, and sliders that look tangible, realistic shadows that suggest depth and lighting direction, textures that age and show wear, realistic paper and card surfaces, 3D perspective with strong vanishing points, and chrome/metallic finishes on buttons and badges.",
+  },
+  {
+    name: "Soft UI Evolution",
+    labelKey: "softUiEvolution",
+    promptInjection:
+      "Apply a soft UI evolution visual language: ultra-soft pastel surfaces with gentle gradient fills, rounded corners (20-32px) on all containers, subtle inner glows and diffused shadows with large blur radii, muted pastel palette (blush pink, soft lavender, sky blue, warm cream), elements that appear to float and cast soft shadows, gentle breathing animations on ambient elements, layered translucent panels with feathered edges, and a calming, approachable feel throughout.",
+  },
+  {
+    name: "Vibrant Block",
+    labelKey: "vibrantBlock",
+    promptInjection:
+      "Apply a vibrant block visual language: bold, saturated color blocks that dominate the layout, geometric shapes and sharp contrasts between hue families, large typographic elements as visual anchors, asymmetric grid-breaking compositions, flat colors with no gradients, bold black or white typography against vivid backgrounds, saturated accent colors used in large areas rather than small details, and playful tension between bold shapes and clean whitespace.",
+  },
+  {
+    name: "Zero Interface",
+    labelKey: "zeroInterface",
+    promptInjection:
+      "Apply a zero-interface / invisible design visual language: interfaces that disappear when not needed, content-first layouts where UI chrome is minimal or absent, contextual tools that appear only when relevant and fade away, voice and gesture as primary interactions, ambient information displays that blend into environment, no visible buttons or traditional controls during passive use, seamless handoff between interaction modalities, and an overall experience that feels like natural interaction rather than using software.",
+  },
 ];
 
 export const DEFAULT_STYLE_NAME = "Default";

@@ -25,6 +25,9 @@ interface ProjectMeta {
   createdAt: string;
   displayName?: string;
   model?: ModelId;
+  githubRepo?: string;
+  githubBranch?: string;
+  vercelUrl?: string;
 }
 
 interface ProjectsStore {
@@ -142,6 +145,38 @@ export async function setProjectModel(
 // subsequent reuse of the same id does not see a stale model.
 export function clearProjectModelCache(projectId: string): void {
   projectModelCache.delete(projectId);
+}
+
+export async function getProjectGithub(projectId: string): Promise<{ repo?: string; branch?: string }> {
+  const store = await loadProjectsStore();
+  const meta = store[projectId];
+  return { repo: meta?.githubRepo, branch: meta?.githubBranch };
+}
+
+export async function setProjectGithub(
+  projectId: string,
+  repo: string,
+  branch: string
+): Promise<void> {
+  const store = await loadProjectsStore();
+  if (!store[projectId]) {
+    throw new Error(`Project not found: ${projectId}`);
+  }
+  store[projectId].githubRepo = repo;
+  store[projectId].githubBranch = branch;
+  await saveProjectsStore(store);
+}
+
+export async function setProjectVercelUrl(
+  projectId: string,
+  url: string
+): Promise<void> {
+  const store = await loadProjectsStore();
+  if (!store[projectId]) {
+    throw new Error(`Project not found: ${projectId}`);
+  }
+  store[projectId].vercelUrl = url;
+  await saveProjectsStore(store);
 }
 
 async function isPortAvailable(port: number): Promise<boolean> {
@@ -295,6 +330,9 @@ export async function listProjects(): Promise<any[]> {
       displayName: meta.displayName,
       ports: port ? [{ private: 3000, public: port, type: "tcp" }] : [],
       labels: { project: "december", containerId: projectId },
+      githubRepo: meta.githubRepo,
+      githubBranch: meta.githubBranch,
+      vercelUrl: meta.vercelUrl,
     });
   }
 

@@ -7,6 +7,9 @@ import {
   ExternalLink,
   Eye,
   Globe,
+  GitBranch,
+  GitCommit,
+  GitPullRequest,
   Home,
   Layers,
   Settings,
@@ -26,14 +29,16 @@ import {
   deployToVercel,
   getChatHistory,
   getProjectModel,
+  getProjectGithub,
   getTurnStatus,
   Message,
   sendChatMessage,
   subscribeTurnStream,
   setProjectModel,
   type ModelInfo,
+  pushToGitHub,
+  gitCommit,
 } from "../../../lib/backend/api";
-import { findStyleByName, prependStyle } from "../../../lib/styles";
 import { ChatInput } from "../../create/components/ChatInput";
 import { ChatMessage } from "../../create/components/ChatMessage";
 import CodeEditor from "../../editor/CodeEditor";
@@ -60,6 +65,14 @@ export const WorkspaceDashboard = ({
   const [deployToken, setDeployToken] = useState<string>("");
   const [showDeployModal, setShowDeployModal] = useState<boolean>(false);
   const [deployUrl, setDeployUrl] = useState<string | null>(null);
+  const [showGitModal, setShowGitModal] = useState<boolean>(false);
+  const [gitAction, setGitAction] = useState<"commit" | "push" | "pull">("commit");
+  const [gitMessage, setGitMessage] = useState<string>("");
+  const [gitToken, setGitToken] = useState<string>("");
+  const [showGitToken, setShowGitToken] = useState<boolean>(false);
+  const [isGitLoading, setIsGitLoading] = useState<boolean>(false);
+  const [githubRepo, setGithubRepo] = useState<string>("");
+  const [githubBranch, setGithubBranch] = useState<string>("main");
   const [hasProcessedPrompt, setHasProcessedPrompt] = useState<boolean>(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(
     null
@@ -141,13 +154,10 @@ export const WorkspaceDashboard = ({
               setHasProcessedPrompt(true);
               setIsLoading(true);
 
-              const styleEntry = findStyleByName(urlParams.get("style"));
-              const finalMessage = prependStyle(promptFromUrl, styleEntry);
-
               try {
                 const response = await sendChatMessage(
                   containerId,
-                  finalMessage,
+                  promptFromUrl,
                   []
                 );
                 if (response.success) {
@@ -324,6 +334,22 @@ export const WorkspaceDashboard = ({
     return () => {
       cancelled = true;
     };
+  }, [containerId]);
+
+  // Load GitHub connection status on mount.
+  useEffect(() => {
+    if (!containerId) return;
+    (async () => {
+      try {
+        const res = await getProjectGithub(containerId);
+        if (res.success && res.repo) {
+          setGithubRepo(res.repo);
+          setGithubBranch(res.branch || "main");
+        }
+      } catch (err) {
+        console.error("Failed to load GitHub config:", err);
+      }
+    })();
   }, [containerId]);
 
   const handleModelChange = async (newModel: string): Promise<void> => {
@@ -874,6 +900,81 @@ export const WorkspaceDashboard = ({
     }
   };
 
+  const openGitModal = (action: "commit" | "push" | "pull") => {
+    setGitAction(action);
+    setGitMessage("");
+    setGitToken("");
+    setShowGitModal(true);
+  };
+
+  const handleGitAction = async () => {
+    if (gitAction === "commit") {
+      if (!gitMessage.trim()) {
+        toast.error("Please enter a commit message");
+        return;
+      }
+      setIsGitLoading(true);
+      try {
+        const res = await gitCommit(containerId, gitMessage.trim());
+        if (res.success) {
+          toast.success("Committed successfully!");
+          setShowGitModal(false);
+        } else {
+          toast.error(res.error ?? "Commit failed");
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Commit failed");
+      } finally {
+        setIsGitLoading(false);
+      }
+    } else if (gitAction === "push") {
+      if (!githubRepo.trim() || !gitToken.trim()) {
+        toast.error("Please connect GitHub first in project settings");
+        return;
+      }
+      setIsGitLoading(true);
+      try {
+        const res = await pushToGitHub(containerId, githubRepo, gitToken.trim(), githubBranch || "main");
+        if (res.success) {
+          toast.success("Pushed to GitHub!");
+          setShowGitModal(false);
+          setGitToken("");
+        } else {
+          toast.error(res.error ?? "Push failed");
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Push failed");
+      } finally {
+        setIsGitLoading(false);
+      }
+    } else if (gitAction === "pull") {
+      if (!githubRepo.trim() || !gitToken.trim()) {
+        toast.error("Please connect GitHub first in project settings");
+        return;
+      }
+      setIsGitLoading(true);
+      try {
+        const res = await fetch(`${API_BASE_URL}/containers/${containerId}/git/pull`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ repoUrl: githubRepo, token: gitToken.trim(), branch: githubBranch || "main" }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          toast.success("Pulled from GitHub!");
+          setShowGitModal(false);
+          setGitToken("");
+        } else {
+          toast.error(data.error ?? "Pull failed");
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Pull failed");
+      } finally {
+        setIsGitLoading(false);
+      }
+    }
+  };
+
   const formatMessageContent = (content: string): React.ReactNode[] => {
     return content.split("\n").map((line: string, index: number) => {
       if (line.startsWith("## ")) {
@@ -1139,6 +1240,35 @@ export const WorkspaceDashboard = ({
               <Globe className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Deploy</span>
             </button>
+
+            <div className="h-4 w-px bg-[#e5e5e5] mx-1" />
+
+            <button
+              onClick={() => openGitModal("commit")}
+              disabled={!githubRepo}
+              className="p-1.5 hover:bg-[#faf9f8] rounded-md transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+              title={githubRepo ? "Git Commit" : "Connect GitHub first in settings"}
+            >
+              <GitCommit className="w-3.5 h-3.5 text-[#666666] disabled:text-[#999999]" />
+            </button>
+
+            <button
+              onClick={() => openGitModal("push")}
+              disabled={!githubRepo}
+              className="p-1.5 hover:bg-[#faf9f8] rounded-md transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+              title={githubRepo ? "Git Push" : "Connect GitHub first in settings"}
+            >
+              <Upload className="w-3.5 h-3.5 text-[#666666] disabled:text-[#999999]" />
+            </button>
+
+            <button
+              onClick={() => openGitModal("pull")}
+              disabled={!githubRepo}
+              className="p-1.5 hover:bg-[#faf9f8] rounded-md transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+              title={githubRepo ? "Git Pull" : "Connect GitHub first in settings"}
+            >
+              <GitPullRequest className="w-3.5 h-3.5 text-[#666666] disabled:text-[#999999]" />
+            </button>
           </div>
         </div>
 
@@ -1317,6 +1447,103 @@ export const WorkspaceDashboard = ({
                         <Globe className="w-3.5 h-3.5" />
                         Deploy
                       </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showGitModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
+          <div className="bg-white border border-[#e5e5e5] rounded-xl shadow-md w-full max-w-md p-6">
+            <h3 className="text-[#1a1a1a] font-semibold text-lg mb-1 flex items-center gap-2">
+              {gitAction === "commit" && <><GitCommit className="w-4 h-4" /> Git Commit</>}
+              {gitAction === "push" && <><Upload className="w-4 h-4" /> Git Push</>}
+              {gitAction === "pull" && <><GitPullRequest className="w-4 h-4" /> Git Pull</>}
+            </h3>
+
+            {gitAction === "commit" ? (
+              <div className="space-y-3 mt-4">
+                <div>
+                  <label className="block text-sm text-[#666666] mb-1.5">Commit message</label>
+                  <input
+                    type="text"
+                    value={gitMessage}
+                    onChange={(e) => setGitMessage(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleGitAction(); if (e.key === "Escape") setShowGitModal(false); }}
+                    placeholder="Update feature X"
+                    autoFocus
+                    className="w-full px-3 py-2 bg-[#faf9f8] border border-[#e5e5e5] rounded-lg text-[#1a1a1a] text-sm placeholder:text-[#888888] focus:outline-none focus:border-[#999999]"
+                  />
+                </div>
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    onClick={() => setShowGitModal(false)}
+                    className="px-4 py-2 text-sm text-[#666666] hover:text-[#1a1a1a] transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleGitAction}
+                    disabled={isGitLoading || !gitMessage.trim()}
+                    className="px-4 py-2 bg-[#1a1a1a] text-white rounded-lg font-medium hover:bg-[#333333] transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isGitLoading ? (
+                      <><div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Committing...</>
+                    ) : (
+                      <><GitCommit className="w-3.5 h-3.5" /> Commit</>
+                    )}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3 mt-4">
+                {githubRepo && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/30 rounded-lg text-sm">
+                    <GitBranch className="w-3.5 h-3.5 text-green-400" />
+                    <span className="text-green-400">{githubRepo}</span>
+                    <span className="text-green-300/60">/ {githubBranch}</span>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-sm text-[#666666] mb-1.5">Personal Access Token</label>
+                  <div className="relative">
+                    <input
+                      type={showGitToken ? "text" : "password"}
+                      value={gitToken}
+                      onChange={(e) => setGitToken(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleGitAction(); if (e.key === "Escape") setShowGitModal(false); }}
+                      placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                      className="w-full px-3 py-2 pr-10 bg-[#faf9f8] border border-[#e5e5e5] rounded-lg text-[#1a1a1a] text-sm placeholder:text-[#888888] focus:outline-none focus:border-[#999999]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowGitToken(!showGitToken)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#888888] hover:text-[#1a1a1a]"
+                    >
+                      {showGitToken ? <Eye className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    onClick={() => setShowGitModal(false)}
+                    className="px-4 py-2 text-sm text-[#666666] hover:text-[#1a1a1a] transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleGitAction}
+                    disabled={isGitLoading || !gitToken.trim()}
+                    className="px-4 py-2 bg-[#1a1a1a] text-white rounded-lg font-medium hover:bg-[#333333] transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isGitLoading ? (
+                      <><div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {gitAction === "push" ? "Pushing..." : "Pulling..."}</>
+                    ) : (
+                      <>{gitAction === "push" ? <><Upload className="w-3.5 h-3.5" /> Push</> : <><GitPullRequest className="w-3.5 h-3.5" /> Pull</>}</>
                     )}
                   </button>
                 </div>
