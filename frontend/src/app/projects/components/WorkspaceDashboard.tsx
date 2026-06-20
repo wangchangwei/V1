@@ -162,6 +162,47 @@ export const WorkspaceDashboard = ({
                 );
                 if (response.success) {
                   setMessages([response.userMessage]);
+
+                  // The user message is queued but the assistant response
+                  // streams in via SSE. Keep isLoading=true so the "Thinking..."
+                  // bubble stays visible; release it only when SSE signals
+                  // [DONE] (or when send fails). Without this, the page went
+                  // blank between sending the prompt and the assistant
+                  // starting to respond.
+                  const cancel = subscribeTurnStream(
+                    containerId,
+                    (data) => {
+                      if (data.type === "assistant") {
+                        setMessages((prev) => {
+                          const idx = prev.findIndex(
+                            (m) => m.id === data.data.id
+                          );
+                          if (idx < 0) return prev;
+                          const newMessages = [...prev];
+                          const existing = newMessages[idx]!;
+                          newMessages[idx] = {
+                            ...data.data,
+                            toolCalls:
+                              data.data.toolCalls ?? existing.toolCalls,
+                          };
+                          return newMessages;
+                        });
+                      }
+                    },
+                    (error) => {
+                      console.error(
+                        "Subscription error during initial prompt:",
+                        error
+                      );
+                      setIsLoading(false);
+                    },
+                    () => {
+                      setIsLoading(false);
+                    }
+                  );
+                  streamCancelRef.current = cancel;
+                } else {
+                  setIsLoading(false);
                 }
               } catch (error) {
                 console.error("Failed to send initial prompt:", error);
@@ -173,7 +214,6 @@ export const WorkspaceDashboard = ({
                   timestamp: new Date().toISOString(),
                 };
                 setMessages([errorMessage]);
-              } finally {
                 setIsLoading(false);
               }
 
