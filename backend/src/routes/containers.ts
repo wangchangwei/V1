@@ -39,8 +39,9 @@ router.get("/", async (req, res) => {
 
 router.post("/create", async (req, res) => {
   try {
+    const { templateId } = req.body ?? {};
     const { projectId, port, containerLike } =
-      await projectService.createProject();
+      await projectService.createProject(templateId);
 
     res.json({
       success: true,

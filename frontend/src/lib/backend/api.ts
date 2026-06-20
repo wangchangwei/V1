@@ -191,10 +191,15 @@ export async function updateProjectDisplayName(
   });
 }
 
-export async function createContainer(): Promise<CreateContainerResponse> {
+export async function createContainer(
+  templateId?: string
+): Promise<CreateContainerResponse> {
   const response = await fetchApi<
     { success: boolean } & CreateContainerResponse
-  >("/containers/create", { method: "POST" });
+  >("/containers/create", {
+    method: "POST",
+    body: JSON.stringify({ templateId }),
+  });
   return response;
 }
 

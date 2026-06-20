@@ -20,6 +20,14 @@ export const TemplatesSection = ({
 }: TemplatesSectionProps) => {
   const templates: Template[] = [
     {
+      id: "vite-vue",
+      name: "极简版 (Vite + Vue 3)",
+      description: "最轻量前端骨架，启动快、占用低",
+      icon: "/vue-logo.png",
+      category: "template",
+      gradient: "from-emerald-500 to-green-700",
+    },
+    {
       id: "nextjs",
       name: "Next.js",
       description: "Build full-stack React apps with Next.js",

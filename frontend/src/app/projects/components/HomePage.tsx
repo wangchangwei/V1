@@ -10,15 +10,17 @@ import { ProjectsLayout } from "./ProjectsLayout";
 import { StyleGallery } from "./StyleGallery";
 import { TemplatesSection } from "./TemplatesSection";
 
+const DEFAULT_TEMPLATE = { id: "nextjs", name: "Next.js" };
+
 export const HomePage = () => {
   const t = useTranslations("home");
   const tc = useTranslations("common");
-  const [selectedTemplate, setSelectedTemplate] = useState("Next.js");
+  const [selectedTemplate, setSelectedTemplate] = useState(DEFAULT_TEMPLATE);
   const [selectedStyle, setSelectedStyle] = useState("Default");
   const [showImportModal, setShowImportModal] = useState(false);
 
-  const handleTemplateSelect = (template: any) => {
-    setSelectedTemplate(template.name);
+  const handleTemplateSelect = (template: typeof DEFAULT_TEMPLATE) => {
+    setSelectedTemplate(template);
   };
 
   return (
@@ -30,7 +32,7 @@ export const HomePage = () => {
         onStyleChange={setSelectedStyle}
       />
       <TemplatesSection
-        selectedTemplate={selectedTemplate}
+        selectedTemplate={selectedTemplate.name}
         onTemplateSelect={handleTemplateSelect}
       />
       <StyleGallery
