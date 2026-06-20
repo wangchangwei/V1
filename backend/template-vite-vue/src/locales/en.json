@@ -1,0 +1,8 @@
+{
+  "app": {
+    "subtitle": "Minimal template — fast startup, low footprint",
+    "count": "count is {count}",
+    "hint": "Edit {0} to get started.",
+    "switch": "中文"
+  }
+}

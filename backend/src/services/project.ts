@@ -40,6 +40,13 @@ const runningProcesses = new Map<
   { process: ReturnType<typeof spawn>; port: number }
 >();
 
+// Short TTL cache for listProjects() so the per-project fs.access() storm
+// doesn't repeat on every poll from the frontend (LivePreview polls every 5s,
+// WorkspaceDashboard polls every 10s — without this every poll re-reads
+// projects.json and re-stats every project directory).
+const LIST_CACHE_TTL_MS = 1000;
+let listCache: { at: number; data: any[] } | null = null;
+
 async function loadProjectsStore(): Promise<ProjectsStore> {
   let raw: string;
   try {
@@ -252,7 +259,7 @@ const TEMPLATE_DIRS: Record<string, string> = {
   nextjs: path.join(import.meta.dirname, "..", "..", "template"),
   "vite-vue": path.join(import.meta.dirname, "..", "..", "template-vite-vue"),
 };
-const DEFAULT_TEMPLATE_ID = "nextjs";
+const DEFAULT_TEMPLATE_ID = "vite-vue";
 
 function resolveTemplateDir(templateId?: string): string {
   if (templateId && TEMPLATE_DIRS[templateId]) return TEMPLATE_DIRS[templateId];
@@ -319,6 +326,11 @@ function runBunDev(projectDir: string, port: number): ReturnType<typeof spawn> {
 }
 
 export async function listProjects(): Promise<any[]> {
+  const now = Date.now();
+  if (listCache && now - listCache.at < LIST_CACHE_TTL_MS) {
+    return listCache.data;
+  }
+
   const store = await loadProjectsStore();
   const result: any[] = [];
 
@@ -352,10 +364,12 @@ export async function listProjects(): Promise<any[]> {
     });
   }
 
-  return result.sort(
+  const sorted = result.sort(
     (a, b) =>
       new Date(b.created).getTime() - new Date(a.created).getTime()
   );
+  listCache = { at: now, data: sorted };
+  return sorted;
 }
 
 // 把已经初始化好的 projectDir（由 import 服务创建）注册进来并启动

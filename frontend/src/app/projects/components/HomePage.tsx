@@ -10,7 +10,7 @@ import { ProjectsLayout } from "./ProjectsLayout";
 import { StyleGallery } from "./StyleGallery";
 import { TemplatesSection } from "./TemplatesSection";
 
-const DEFAULT_TEMPLATE = { id: "nextjs", name: "Next.js" };
+const DEFAULT_TEMPLATE = { id: "vite-vue", name: "极简版 (Vite + Vue 3)" };
 
 export const HomePage = () => {
   const t = useTranslations("home");
