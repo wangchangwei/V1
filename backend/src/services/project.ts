@@ -40,6 +40,13 @@ const runningProcesses = new Map<
   { process: ReturnType<typeof spawn>; port: number }
 >();
 
+// Short TTL cache for listProjects() so the per-project fs.access() storm
+// doesn't repeat on every poll from the frontend (LivePreview polls every 5s,
+// WorkspaceDashboard polls every 10s — without this every poll re-reads
+// projects.json and re-stats every project directory).
+const LIST_CACHE_TTL_MS = 1000;
+let listCache: { at: number; data: any[] } | null = null;
+
 async function loadProjectsStore(): Promise<ProjectsStore> {
   let raw: string;
   try {
@@ -242,23 +249,39 @@ export async function recoverRunningProjects(): Promise<void> {
   await saveProjectsStore(store);
 }
 
-// Vendored Next.js template used to scaffold new V1 projects.
-// The source lives at backend/template/ so we don't reach out to a remote
+// Vendored templates used to scaffold new V1 projects.
+// The source lives at backend/template* so we don't reach out to a remote
 // repo at runtime — updates flow through normal git pulls of V1 itself.
-const TEMPLATE_DIR = path.join(import.meta.dirname, "..", "..", "template");
+// `templateId` selects between multiple starter scaffolds (e.g. a full
+// Next.js stack vs. a lightweight Vite + Vue setup). Unknown ids fall back
+// to the default so legacy callers keep working.
+const TEMPLATE_DIRS: Record<string, string> = {
+  nextjs: path.join(import.meta.dirname, "..", "..", "template"),
+  "vite-vue": path.join(import.meta.dirname, "..", "..", "template-vite-vue"),
+};
+const DEFAULT_TEMPLATE_ID = "vite-vue";
 
-async function initializeProjectOnHost(projectId: string): Promise<string> {
+function resolveTemplateDir(templateId?: string): string {
+  if (templateId && TEMPLATE_DIRS[templateId]) return TEMPLATE_DIRS[templateId];
+  return TEMPLATE_DIRS[DEFAULT_TEMPLATE_ID];
+}
+
+async function initializeProjectOnHost(
+  projectId: string,
+  templateId?: string
+): Promise<string> {
   await ensureProjectsDir();
   const projectDir = path.join(PROJECTS_DIR, projectId);
+  const templateDir = resolveTemplateDir(templateId);
 
-  console.log(`Initializing project on host from ${TEMPLATE_DIR}`);
+  console.log(`Initializing project on host from ${templateDir} (templateId=${templateId ?? DEFAULT_TEMPLATE_ID})`);
 
   // Copy the vendored template into a fresh project directory. fs.cp
   // requires the destination to NOT exist, so we remove any leftover first
   // (initialization is only called for brand-new project ids).
   await fs.rm(projectDir, { recursive: true, force: true });
   try {
-    await fs.cp(TEMPLATE_DIR, projectDir, { recursive: true });
+    await fs.cp(templateDir, projectDir, { recursive: true });
     console.log(`Template copied to ${projectDir}`);
   } catch (error) {
     console.error("Template copy failed:", error);
@@ -303,6 +326,11 @@ function runBunDev(projectDir: string, port: number): ReturnType<typeof spawn> {
 }
 
 export async function listProjects(): Promise<any[]> {
+  const now = Date.now();
+  if (listCache && now - listCache.at < LIST_CACHE_TTL_MS) {
+    return listCache.data;
+  }
+
   const store = await loadProjectsStore();
   const result: any[] = [];
 
@@ -336,14 +364,19 @@ export async function listProjects(): Promise<any[]> {
     });
   }
 
-  return result.sort(
+  const sorted = result.sort(
     (a, b) =>
       new Date(b.created).getTime() - new Date(a.created).getTime()
   );
+  listCache = { at: now, data: sorted };
+  return sorted;
 }
 
 // 把已经初始化好的 projectDir（由 import 服务创建）注册进来并启动
-export async function registerAndStartProject(projectId: string): Promise<{
+export async function registerAndStartProject(
+  projectId: string,
+  templateId?: string
+): Promise<{
   port: number;
   containerLike: { id: string; containerId: string; status: string; port: number; url: string; createdAt: string; type: string };
 }> {
@@ -396,13 +429,13 @@ export async function registerAndStartProject(projectId: string): Promise<{
   };
 }
 
-export async function createProject(): Promise<{
+export async function createProject(templateId?: string): Promise<{
   projectId: string;
   port: number;
   containerLike: { id: string; containerId: string; status: string; port: number; url: string; createdAt: string; type: string };
 }> {
   const projectId = uuidv4();
-  const projectDir = await initializeProjectOnHost(projectId);
+  const projectDir = await initializeProjectOnHost(projectId, templateId);
   const assignedPort = await findAvailablePort();
 
   const store = await loadProjectsStore();

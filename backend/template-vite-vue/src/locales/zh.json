@@ -1,0 +1,8 @@
+{
+  "app": {
+    "subtitle": "极简版模板 — 启动快、占用低",
+    "count": "当前计数 {count}",
+    "hint": "编辑 {0} 开始你的开发。",
+    "switch": "English"
+  }
+}

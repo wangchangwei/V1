@@ -8,9 +8,14 @@ import { createContainer, enrichPrompt } from "../../../lib/backend/api";
 import { STYLES, findStyleByName } from "../../../lib/styles";
 import { useTranslations } from "next-intl";
 
+interface Template {
+  id: string;
+  name: string;
+}
+
 interface ProjectPromptInterfaceProps {
-  selectedTemplate: string;
-  onTemplateChange: (template: string) => void;
+  selectedTemplate: Template;
+  onTemplateChange: (template: Template) => void;
   selectedStyle: string;
   onStyleChange: (style: string) => void;
 }
@@ -41,7 +46,7 @@ export const ProjectPromptInterface = ({
     });
 
     try {
-      const containerResponse = await createContainer();
+      const containerResponse = await createContainer(selectedTemplate.id);
       const containerId = containerResponse.containerId;
 
       toast.success("Project created! Redirecting...", {
@@ -68,14 +73,15 @@ export const ProjectPromptInterface = ({
     }
   };
 
-  const communityOptions = [
-    "Next.js",
-    "Express & React",
-    "Express & Vue",
-    "Django",
+  const communityOptions: Template[] = [
+    { id: "vite-vue", name: "极简版 (Vite + Vue 3)" },
+    { id: "nextjs", name: "Next.js" },
+    { id: "express-react", name: "Express & React" },
+    { id: "express-vue", name: "Express & Vue" },
+    { id: "django", name: "Django" },
   ];
 
-  const handleCommunitySelect = (option: string) => {
+  const handleCommunitySelect = (option: Template) => {
     onTemplateChange(option);
     setShowCommunityDropdown(false);
     setShowStyleDropdown(false);
@@ -108,7 +114,7 @@ export const ProjectPromptInterface = ({
     try {
       const enriched = await enrichPrompt(
         text,
-        selectedTemplate
+        selectedTemplate.name
       );
       setPromptInput(enriched);
       toast.success("Prompt enriched", { duration: 1500 });
@@ -172,7 +178,7 @@ export const ProjectPromptInterface = ({
                         aria-expanded={showCommunityDropdown}
                       >
                         <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                        <span>{selectedTemplate}...</span>
+                        <span>{selectedTemplate.name}...</span>
                         <svg
                           height="12"
                           strokeLinejoin="round"
@@ -199,13 +205,13 @@ export const ProjectPromptInterface = ({
                         >
                           {communityOptions.map((option) => (
                             <button
-                              key={option}
+                              key={option.id}
                               role="option"
-                              aria-selected={selectedTemplate === option}
+                              aria-selected={selectedTemplate.id === option.id}
                               onClick={() => handleCommunitySelect(option)}
                               className="w-full text-left px-3 py-2 text-sm text-[#444444] hover:bg-[#faf9f8] hover:text-[#1a1a1a] first:rounded-t-lg last:rounded-b-lg transition-all duration-200 cursor-pointer"
                             >
-                              {option}
+                              {option.name}
                             </button>
                           ))}
                         </div>
