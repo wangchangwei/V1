@@ -24,11 +24,15 @@ Every project runs in its own isolated Docker container, so you can spin up many
 - **Live preview in an iframe** — see your app update in real time as the AI writes files. Hot-reload is built in.
 - **Isolated project containers** — every project lives in its own Docker container on a dedicated port. Stop, start, delete without affecting the rest.
 - **Iterate via chat** — the AI can read, write, rename, and delete files; install npm packages; and list project structure. All from the chat panel.
-- **Bring your own model** — works with any OpenAI-compatible endpoint (OpenAI, Anthropic, OpenRouter, local Ollama, MiniMax, etc.). Just set `AI_BASE_URL` and `AI_API_KEY`.
 - **Built-in design rules** — the system prompt ships with accessibility, touch target, performance, and responsive layout guidelines, so generated UIs are production-grade by default.
 - **Markdown-aware chat** — assistant replies render tables, code blocks (collapsible by default), lists, and inline code.
 - **Import / export** — pull in a project from a GitHub URL or a ZIP; export your work as a ZIP when you're done.
 - **Community gallery** — browse and fork projects shared by other V1 users.
+- **Style Gallery** — pick a visual style (glassmorphism, brutalism, neumorphism, etc.) before generating.
+- **Templates** — start from a curated project template instead of a blank slate.
+- **Edit & Regenerate** — edit a past message and the AI re-generates from that point with full filesystem snapshot recovery.
+- **Deploy to Vercel** — ship your project to Vercel with a single click directly from the workspace.
+- **Multi-client SSE** — open the same project in multiple tabs; all receive the same live streaming events with automatic reconnect recovery.
 
 ## Quick Start
 
@@ -110,7 +114,7 @@ Watch the chat panel on the left as the AI plans the work, calls tools, and writ
 | Code editor      | Monaco                                                |
 | Markdown         | react-markdown + remark-gfm                           |
 | Backend          | Express on the Bun runtime                            |
-| AI integration   | Native OpenAI SDK v5 (function-calling / tool use)    |
+| AI agent         | PI Agent sidecar (Docker) + OpenAI-compatible API      |
 | Containerization | Docker (one container per project)                    |
 | Package manager  | Bun                                                   |
 
@@ -123,23 +127,29 @@ V1/
 │       ├── projects/              project list, cards, workspace dashboard
 │       ├── create/                AI chat interface for generating new apps
 │       ├── editor/                in-browser file editor (Monaco)
+│       ├── templates/             curated project templates
 │       └── community/             shared-project gallery
 │
 ├── backend/                       Express API on Bun
 │   └── src/
 │       ├── routes/
-│       │   ├── chat.ts            POST/GET /chat/:id/messages (SSE stream)
-│       │   ├── containers.ts      project lifecycle, file CRUD, imports
-│       │   └── models.ts          /models — list of supported models
+│       │   ├── chat.ts            POST/GET/PATCH /chat/:id/messages
+│       │   ├── containers.ts     project lifecycle, file CRUD, imports
+│       │   ├── deploy.ts         Vercel deployment
+│       │   └── turnStream.ts     SSE broadcaster for multi-client sync
 │       ├── services/
-│       │   ├── llm.ts             OpenAI tool-calling loop + SSE streaming
-│       │   ├── tools.ts           tool definitions (read/write/rename/delete/list/install)
-│       │   ├── project.ts         container spin-up, port allocation, recovery
-│       │   ├── file.ts            in-container file ops
+│       │   ├── piProxy.ts        PI Agent sidecar proxy (chat streaming)
+│       │   ├── piContainerManager.ts  PI sidecar lifecycle
+│       │   ├── turnBroadcaster.ts    SSE broadcast fan-out to all clients
+│       │   ├── chatSessions.ts   session history + message store
+│       │   ├── snapshots.ts      filesystem snapshots for edit/recover
+│       │   ├── locks.ts          per-project mutex
+│       │   ├── project.ts        container spin-up, port allocation, recovery
+│       │   ├── file.ts           in-container file ops
 │       │   ├── package.ts         bun add wrapper
-│       │   ├── import.ts          GitHub + ZIP importers
-│       │   └── export.ts          ZIP exporter
-│       └── utils/prompt.txt       system prompt with design rules
+│       │   ├── import.ts         GitHub + ZIP importers
+│       │   └── export.ts         ZIP exporter
+│       └── pi-http-entry.ts       HTTP entry for PI sidecar
 │
 ├── template/                      vendored Next.js project template (scaffold)
 ├── config.ts                      shared AI config (read by backend)
@@ -152,35 +162,37 @@ Each project is instantiated from the vendored `template/` directory (Next.js + 
 ## How the AI loop works
 
 1. You send a message.
-2. The backend forwards the conversation history to your AI model, with the [tool definitions](backend/src/services/tools.ts) attached.
-3. The model either returns text, or returns one or more `tool_calls` (`read_file`, `write_file`, `list_files`, etc.).
-4. The backend executes each tool call against the project's container, appends the results, and asks the model for the next turn.
-5. The loop continues (max 8 iterations) until the model returns a plain-text reply with no more tool calls.
-6. Streaming is SSE-based: you see `tool_call` / `tool_result` / `assistant` events as they happen.
+2. The backend proxies the conversation to the **PI Agent** sidecar (a Docker container running the coding agent) over HTTP streaming.
+3. The PI Agent executes tool calls (read/write/list files, install packages, etc.) against the project container and streams SSE events back.
+4. The backend fan-outs those events to **all connected clients** via `TurnBroadcaster`, so every open tab sees the same live output.
+5. On page reload, the client re-subscribes to the in-progress turn and recovers state automatically from the broadcaster.
+6. The `PATCH /chat/:id/messages/:id` endpoint lets you edit a past user message — the backend restores the filesystem to that message's snapshot and re-streams the AI's response from that point.
 
-The system prompt in `backend/src/utils/prompt.txt` ships with five priority design rule categories — accessibility, touch targets, performance, style selection, and responsive layout — so generated UIs follow current best practices without you having to ask.
+Streaming is SSE-based: you see `tool_call` / `tool_result` / `assistant` / `done` / `error` events as they happen. The system prompt ships with five priority design rule categories — accessibility, touch targets, performance, style selection, and responsive layout.
 
 ## API reference
 
 See [`backend/src/routes/`](backend/src/routes) for the full surface. Highlights:
 
-| Method | Endpoint                          | Purpose                          |
-|--------|-----------------------------------|----------------------------------|
-| GET    | `/containers`                     | List projects                    |
-| POST   | `/containers/create`              | Create a new project             |
-| POST   | `/containers/:id/start` / `stop`  | Toggle the project container     |
-| DELETE | `/containers/:id`                 | Delete a project                 |
-| GET    | `/containers/:id/files`           | List project files               |
-| GET    | `/containers/:id/file?path=…`     | Read a file                      |
-| PUT    | `/containers/:id/files`           | Write a file                     |
-| DELETE | `/containers/:id/files?path=…`    | Delete a file                    |
-| POST   | `/containers/:id/dependencies`    | `bun add` a package              |
-| POST   | `/containers/import/github`       | Import from a GitHub URL         |
-| POST   | `/containers/import/zip`          | Import from a ZIP upload         |
-| GET    | `/containers/:id/export`          | Download project as ZIP          |
-| POST   | `/chat/:id/messages`              | Send a chat message              |
-| GET    | `/chat/:id/messages`              | Read chat history                |
-| GET    | `/models`                         | List models your endpoint serves |
+| Method | Endpoint                               | Purpose                              |
+|--------|----------------------------------------|--------------------------------------|
+| GET    | `/containers`                          | List projects                        |
+| POST   | `/containers/create`                  | Create a new project                 |
+| POST   | `/containers/:id/start` / `stop`       | Toggle the project container         |
+| DELETE | `/containers/:id`                     | Delete a project                     |
+| GET    | `/containers/:id/files`                | List project files                   |
+| GET    | `/containers/:id/file?path=…`          | Read a file                         |
+| PUT    | `/containers/:id/files`                | Write a file                        |
+| DELETE | `/containers/:id/files?path=…`         | Delete a file                       |
+| POST   | `/containers/:id/dependencies`         | `bun add` a package                 |
+| POST   | `/containers/import/github`            | Import from a GitHub URL             |
+| POST   | `/containers/import/zip`                | Import from a ZIP upload            |
+| GET    | `/containers/:id/export`               | Download project as ZIP             |
+| POST   | `/chat/:id/messages`                   | Send a chat message (JSON or SSE)  |
+| GET    | `/chat/:id/messages`                  | Read chat history                   |
+| PATCH  | `/chat/:id/messages/:mid`             | Edit a message & regenerate         |
+| GET    | `/chat/:id/turn-stream`               | SSE subscription for live events    |
+| POST   | `/deploy/:id`                          | Deploy project to Vercel            |
 
 ## Environment variables
 
